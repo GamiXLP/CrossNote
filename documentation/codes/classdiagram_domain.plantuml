@@ -1,0 +1,54 @@
+@startuml
+title CrossNote - Domain (Entities & Value Objects)
+left to right direction
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+skinparam packageStyle rectangle
+
+package "Domain" {
+
+  class Notiz <<entity>> {
+    +id: UUID
+    +titel: String
+    +inhalt: String
+    +status: NoteStatus
+    +istGepinnt: Boolean
+    +erstelltAm: DateTime
+    +aktualisiertAm: DateTime
+    +version: Long
+  }
+
+  class Kategorie <<entity>> {
+    +id: UUID
+    +name: String
+    +farbeHex: String
+  }
+
+  class Anhang <<entity>> {
+    +id: UUID
+    +dateiname: String
+    +mimeType: String
+    +groesseBytes: Long
+  }
+
+  class Geraet <<entity>> {
+    +id: UUID
+    +plattform: String   'Windows/Linux/Android/iOS
+    +modell: String
+    +letzteSync: DateTime
+  }
+
+  enum NoteStatus {
+    ACTIVE
+    ARCHIVED
+    DELETED
+  }
+}
+
+' Beziehungen innerhalb der Domain
+Notiz "0..*" -- "0..*" Kategorie : <<tag>>
+Notiz "1" *-- "0..*" Anhang : enthält >
+Geraet "1" -- "0..*" Notiz : synchronisiert >
+
+@enduml

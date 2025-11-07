@@ -1,0 +1,51 @@
+@startuml
+title CrossNote – Application (Control)
+left to right direction
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+skinparam packageStyle rectangle
+
+package "Application (Control)" {
+  class NotizVerwaltung <<control>> {
+    +notizErstellen(titel, inhalt, benutzerId): Notiz
+    +notizBearbeiten(notizId, titel?, inhalt?, status?, istGepinnt?, erinnerungAm?): void
+    +notizLoeschen(notizId): void
+    +kategorieZuordnen(notizId, kategorieId): void
+    +kategorieEntfernen(notizId, kategorieId): void
+    +anhangHinzufuegen(notizId, dateipfad): Anhang
+    +anhangEntfernen(anhangId): void
+    +suchen(benutzerId, query): List<Notiz>
+    +listeFuerBenutzer(benutzerId): List<Notiz>
+  }
+
+  class BenutzerVerwaltung <<control>> {
+    +registrieren(email, passwort, anzeigename): Benutzer
+    +login(email, passwort): String  'Token
+    +logout(benutzerId): void
+    +passwortAendern(benutzerId, alt, neu): void
+    +profilAktualisieren(benutzerId, anzeigename): void
+  }
+
+  class SyncController <<control>> {
+    +synchronisieren(benutzerId, geraetId): void
+    +konflikteAufloesen(notizLocal, notizRemote, strategie): Notiz
+  }
+}
+
+' optionale leichte Context-Bezüge
+class Notiz
+class Benutzer
+
+NotizVerwaltung ..> Notiz : erstellt/ändert
+BenutzerVerwaltung ..> Benutzer : verwaltet
+SyncController ..> Notiz : abgleiche
+
+note right of SyncController
+  Konfliktstrategien:
+  - LOCAL_WINS
+  - REMOTE_WINS
+  - MERGE_BY_TIMESTAMP
+end note
+
+@enduml

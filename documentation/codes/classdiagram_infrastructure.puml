@@ -1,0 +1,89 @@
+@startuml
+title CrossNote – Infrastructure (Persistence & Services)
+left to right direction
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+skinparam packageStyle rectangle
+
+package "Infrastructure" {
+  interface INotizRepository {
+    +save(n: Notiz): Notiz
+    +findById(id: UUID): Notiz?
+    +findAllByBenutzer(benutzerId: UUID): List<Notiz>
+    +search(benutzerId: UUID, query: String): List<Notiz>
+    +delete(id: UUID): void
+  }
+
+  interface IKategorieRepository {
+    +save(k: Kategorie): Kategorie
+    +findById(id: UUID): Kategorie?
+    +findAll(): List<Kategorie>
+    +delete(id: UUID): void
+  }
+
+  interface IBenutzerRepository {
+    +save(b: Benutzer): Benutzer
+    +findByEmail(email: String): Benutzer?
+    +findById(id: UUID): Benutzer?
+  }
+
+  interface IAnhangeRepository {
+    +save(a: Anhang): Anhang
+    +findById(id: UUID): Anhang?
+    +delete(id: UUID): void
+  }
+
+  interface IAuthService {
+    +verifyCredentials(email: String, passwort: String): Boolean
+    +issueToken(benutzerId: UUID): String
+    +validateToken(token: String): Boolean
+  }
+
+  interface ISyncService {
+    +push(benutzerId: UUID, geraetId: UUID): void
+    +pull(benutzerId: UUID, geraetId: UUID): void
+    +merge(local: Notiz, remote: Notiz, strategie): Notiz
+  }
+
+  class SQLiteNotizRepository
+  class SQLiteBenutzerRepository
+  class SQLiteKategorieRepository
+  class SQLiteAnhaengeRepository
+
+  class LocalDb {
+    +open(): void
+    +migrate(): void
+    +transaction<T>(fn): T
+  }
+
+  class CloudApiClient {
+    +authenticate(token: String): void
+    +postNotes(payload): void
+    +getNotes(since: DateTime): List<Notiz>
+    +uploadAttachment(a: Anhang): void
+    +downloadAttachment(id: UUID): Anhang
+  }
+
+  class AuthService
+  class SyncService
+}
+
+' Bindings
+SQLiteNotizRepository ..|> INotizRepository
+SQLiteBenutzerRepository ..|> IBenutzerRepository
+SQLiteKategorieRepository ..|> IKategorieRepository
+SQLiteAnhaengeRepository ..|> IAnhangeRepository
+AuthService ..|> IAuthService
+SyncService ..|> ISyncService
+
+' Dependencies
+SQLiteNotizRepository --> LocalDb
+SQLiteBenutzerRepository --> LocalDb
+SQLiteKategorieRepository --> LocalDb
+SQLiteAnhaengeRepository --> LocalDb
+
+AuthService --> CloudApiClient
+SyncService --> CloudApiClient
+
+@enduml
