@@ -1,0 +1,30 @@
+@startuml
+title CrossNote – UI (Boundary)
+left to right direction
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+skinparam packageStyle rectangle
+
+package "UI (Boundary)" {
+  class NotizGUI <<boundary>> {
+    +anzeigenListe(notizen: List<Notiz>): void
+    +editorOeffnen(notiz?: Notiz): void
+    +sucheAbsenden(query: String): void
+    +fehlerAnzeigen(msg: String): void
+  }
+
+  class SyncView <<boundary>> {
+    +statusAnzeigen(text: String): void
+    +syncStarten(): void
+  }
+}
+
+' leichte Bezüge zu Controls (ohne sie zu zeigen, erspart Größe)
+class NotizVerwaltung
+class SyncController
+
+NotizGUI ..> NotizVerwaltung : nutzt
+SyncView ..> SyncController : nutzt
+
+@enduml

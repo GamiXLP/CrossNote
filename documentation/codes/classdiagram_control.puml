@@ -1,0 +1,39 @@
+@startuml
+title CrossNote – Application (Control)
+left to right direction
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+skinparam packageStyle rectangle
+
+package "Application (Control)" {
+  class NotizVerwaltung <<control>> {
+    +notizErstellen(titel, inhalt): Notiz
+    +notizBearbeiten(notizId, titel?, inhalt?, status?, istGepinnt?): void
+    +notizLoeschen(notizId): void
+    +kategorieZuordnen(notizId, kategorieId): void
+    +kategorieEntfernen(notizId, kategorieId): void
+    +anhangHinzufuegen(notizId, dateipfad): Anhang
+    +anhangEntfernen(anhangId): void
+    +suchen(query): List<Notiz>
+  }
+
+  class SyncController <<control>> {
+    +synchronisieren(geraetId): void
+    +konflikteAufloesen(notizLocal, notizRemote, strategie): Notiz
+  }
+}
+
+' optionale leichte Context-Bezüge
+class Notiz
+
+NotizVerwaltung ..> Notiz : erstellt/ändert
+SyncController ..> Notiz : abgleiche
+
+note right of SyncController
+  Konfliktstrategien:
+  - LOCAL_WINS
+  - REMOTE_WINS
+  - MERGE_BY_TIMESTAMP
+end note
+@enduml
