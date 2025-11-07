@@ -7,14 +7,13 @@ skinparam rectangle {
   StereotypeFontSize 12
 }
 
-rectangle "UI (Boundary)\nNotizGUI • LoginForm • SyncView" as UI
-rectangle "Application (Control)\nNotizVerwaltung • BenutzerVerwaltung • SyncController" as APP
-rectangle "Domain (Entities)\nBenutzer • Notiz • Kategorie • Anhang • Geraet" as DOMAIN
-rectangle "Infrastructure (Persistence/Services)\nRepos • LocalDb • Auth/SyncService • CloudApiClient" as INFRA
+rectangle "UI (Boundary)\nNotizGUI • SyncView" as UI
+rectangle "Application (Control)\nNotizVerwaltung • SyncController" as APP
+rectangle "Domain (Entities)\nNotiz • Kategorie • Anhang • Geraet" as DOMAIN
+rectangle "Infrastructure (Persistence/Services)\nRepos • LocalDb • SyncService • CloudApiClient" as INFRA
 
 UI --> APP
 APP --> DOMAIN
 APP --> INFRA
 INFRA ..> DOMAIN : DTO/Entity Mappings
-
 @enduml

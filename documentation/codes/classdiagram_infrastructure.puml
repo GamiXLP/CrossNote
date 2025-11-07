@@ -10,8 +10,7 @@ package "Infrastructure" {
   interface INotizRepository {
     +save(n: Notiz): Notiz
     +findById(id: UUID): Notiz?
-    +findAllByBenutzer(benutzerId: UUID): List<Notiz>
-    +search(benutzerId: UUID, query: String): List<Notiz>
+    +search(query: String): List<Notiz>
     +delete(id: UUID): void
   }
 
@@ -22,32 +21,19 @@ package "Infrastructure" {
     +delete(id: UUID): void
   }
 
-  interface IBenutzerRepository {
-    +save(b: Benutzer): Benutzer
-    +findByEmail(email: String): Benutzer?
-    +findById(id: UUID): Benutzer?
-  }
-
   interface IAnhangeRepository {
     +save(a: Anhang): Anhang
     +findById(id: UUID): Anhang?
     +delete(id: UUID): void
   }
 
-  interface IAuthService {
-    +verifyCredentials(email: String, passwort: String): Boolean
-    +issueToken(benutzerId: UUID): String
-    +validateToken(token: String): Boolean
-  }
-
   interface ISyncService {
-    +push(benutzerId: UUID, geraetId: UUID): void
-    +pull(benutzerId: UUID, geraetId: UUID): void
+    +push(geraetId: UUID): void
+    +pull(UUID, geraetId: UUID): void
     +merge(local: Notiz, remote: Notiz, strategie): Notiz
   }
 
   class SQLiteNotizRepository
-  class SQLiteBenutzerRepository
   class SQLiteKategorieRepository
   class SQLiteAnhaengeRepository
 
@@ -65,25 +51,19 @@ package "Infrastructure" {
     +downloadAttachment(id: UUID): Anhang
   }
 
-  class AuthService
   class SyncService
 }
 
 ' Bindings
 SQLiteNotizRepository ..|> INotizRepository
-SQLiteBenutzerRepository ..|> IBenutzerRepository
 SQLiteKategorieRepository ..|> IKategorieRepository
 SQLiteAnhaengeRepository ..|> IAnhangeRepository
-AuthService ..|> IAuthService
 SyncService ..|> ISyncService
 
 ' Dependencies
 SQLiteNotizRepository --> LocalDb
-SQLiteBenutzerRepository --> LocalDb
 SQLiteKategorieRepository --> LocalDb
 SQLiteAnhaengeRepository --> LocalDb
 
-AuthService --> CloudApiClient
 SyncService --> CloudApiClient
-
 @enduml
