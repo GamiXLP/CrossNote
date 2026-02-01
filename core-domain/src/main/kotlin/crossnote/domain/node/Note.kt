@@ -9,8 +9,17 @@ data class Note(
     val title: String,
     val content: String,
     val createdAt: Instant,
-    val updatedAt: Instant
-)
+    val updatedAt: Instant,
+    val trashedAt: Instant?
+) {
+    fun moveToTrash(now: Instant): Note =
+        copy(trashedAt = now, updatedAt = now)
+
+    fun restore(now: Instant): Note =
+        copy(trashedAt = null, updatedAt = now)
+
+    fun isTrashed(): Boolean = trashedAt != null
+}
 
 interface NoteRepository {
     fun save(note: Note)

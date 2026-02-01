@@ -26,6 +26,7 @@ class DesktopApp : Application() {
 
     private val listItems = FXCollections.observableArrayList<Pair<String, String>>() // (id, title)
     private var selectedId: String? = null
+    private var showTrash: Boolean = false
 
     override fun start(stage: Stage) {
         val listView = ListView<Pair<String, String>>(listItems).apply {
@@ -40,21 +41,12 @@ class DesktopApp : Application() {
             }
         }
 
-        val titleField = TextField().apply {
-            promptText = "Titel"
-        }
-
+        val titleField = TextField().apply { promptText = "Titel" }
         val contentArea = TextArea().apply {
             promptText = "Inhalt"
             isWrapText = true
         }
-
         val statusLabel = Label("Bereit")
-
-        fun refreshList() {
-            val summaries = service.listNotes()
-            listItems.setAll(summaries.map { it.id to it.title })
-        }
 
         fun clearEditor() {
             selectedId = null
@@ -62,8 +54,24 @@ class DesktopApp : Application() {
             contentArea.text = ""
         }
 
+        fun refreshList() {
+            val summaries = if (showTrash) service.listTrashedNotes() else service.listActiveNotes()
+            listItems.setAll(summaries.map { it.id to it.title })
+        }
+
+        val trashToggle = CheckBox("Papierkorb anzeigen").apply {
+            selectedProperty().addListener { _, _, newValue ->
+                showTrash = newValue
+                clearEditor()
+                listView.selectionModel.clearSelection()
+                refreshList()
+                statusLabel.text = if (showTrash) "Papierkorb" else "Notizen"
+            }
+        }
+
         val newButton = Button("Neu").apply {
             setOnAction {
+                if (showTrash) return@setOnAction
                 clearEditor()
                 statusLabel.text = "Neue Notiz"
                 titleField.requestFocus()
@@ -73,6 +81,8 @@ class DesktopApp : Application() {
 
         val saveButton = Button("Speichern").apply {
             setOnAction {
+                if (showTrash) return@setOnAction
+
                 val title = titleField.text ?: ""
                 val content = contentArea.text ?: ""
 
@@ -87,11 +97,52 @@ class DesktopApp : Application() {
                 }
 
                 refreshList()
-
-                // Optional: nach dem Speichern den Eintrag in der Liste selektieren
                 val idx = listItems.indexOfFirst { it.first == selectedId }
                 if (idx >= 0) listView.selectionModel.select(idx)
             }
+        }
+
+        val trashButton = Button("In Papierkorb").apply {
+            setOnAction {
+                if (showTrash) return@setOnAction
+                val id = selectedId ?: return@setOnAction
+
+                service.moveToTrash(NoteId(id))
+                statusLabel.text = "In Papierkorb verschoben"
+                clearEditor()
+                refreshList()
+                listView.selectionModel.clearSelection()
+            }
+        }
+
+        val restoreButton = Button("Wiederherstellen").apply {
+            isVisible = false
+            isManaged = false
+            setOnAction {
+                if (!showTrash) return@setOnAction
+                val id = selectedId ?: return@setOnAction
+
+                service.restore(NoteId(id))
+                statusLabel.text = "Wiederhergestellt"
+                clearEditor()
+                refreshList()
+                listView.selectionModel.clearSelection()
+            }
+        }
+
+        fun updateModeButtons() {
+            restoreButton.isVisible = showTrash
+            restoreButton.isManaged = showTrash
+
+            trashButton.isVisible = !showTrash
+            trashButton.isManaged = !showTrash
+
+            saveButton.isDisable = showTrash
+            newButton.isDisable = showTrash
+        }
+
+        trashToggle.selectedProperty().addListener { _, _, _ ->
+            updateModeButtons()
         }
 
         listView.selectionModel.selectedItemProperty().addListener { _, _, new ->
@@ -100,13 +151,16 @@ class DesktopApp : Application() {
                 val note = service.getNote(NoteId(new.first))
                 titleField.text = note.title
                 contentArea.text = note.content
-                statusLabel.text = "Geöffnet"
+                statusLabel.text = if (showTrash) "Papierkorb: geöffnet" else "Geöffnet"
             }
         }
 
-        val buttons = HBox(10.0, newButton, saveButton)
+        // Initial
+        updateModeButtons()
+        refreshList()
 
-        val editor = VBox(10.0, titleField, contentArea, buttons, statusLabel).apply {
+        val buttons = HBox(10.0, newButton, saveButton, trashButton, restoreButton)
+        val editor = VBox(10.0, trashToggle, titleField, contentArea, buttons, statusLabel).apply {
             padding = Insets(12.0)
             VBox.setVgrow(contentArea, Priority.ALWAYS)
         }
@@ -116,10 +170,8 @@ class DesktopApp : Application() {
             center = editor
         }
 
-        refreshList()
-
-        stage.title = "CrossNote (MVP Editor)"
-        stage.scene = Scene(root, 950.0, 650.0)
+        stage.title = "CrossNote (Papierkorb MVP)"
+        stage.scene = Scene(root, 980.0, 680.0)
         stage.show()
     }
 }

@@ -16,7 +16,8 @@ class NoteAppService(
             title = title.trim(),
             content = content,
             createdAt = now,
-            updatedAt = now
+            updatedAt = now,
+            trashedAt = null
         )
         repo.save(note)
         return note.id
@@ -36,13 +37,31 @@ class NoteAppService(
     fun getNote(id: NoteId): Note =
         repo.findById(id) ?: error("Note not found: ${id.value}")
 
-    fun listNotes(): List<NoteSummaryDto> =
+    fun moveToTrash(id: NoteId) {
+        val existing = repo.findById(id) ?: error("Note not found: ${id.value}")
+        val updated = existing.moveToTrash(clock.now())
+        repo.save(updated)
+    }
+
+    fun restore(id: NoteId) {
+        val existing = repo.findById(id) ?: error("Note not found: ${id.value}")
+        val updated = existing.restore(clock.now())
+        repo.save(updated)
+    }
+
+    fun listActiveNotes(): List<NoteSummaryDto> =
         repo.findAll()
+            .asSequence()
+            .filter { !it.isTrashed() }
             .sortedByDescending { it.updatedAt }
-            .map { note ->
-                NoteSummaryDto(
-                    id = note.id.value,
-                    title = note.title.ifBlank { "(Ohne Titel)" }
-                )
-            }
+            .map { NoteSummaryDto(it.id.value, it.title.ifBlank { "(Ohne Titel)" }) }
+            .toList()
+
+    fun listTrashedNotes(): List<NoteSummaryDto> =
+        repo.findAll()
+            .asSequence()
+            .filter { it.isTrashed() }
+            .sortedByDescending { it.updatedAt }
+            .map { NoteSummaryDto(it.id.value, it.title.ifBlank { "(Ohne Titel)" }) }
+            .toList()
 }
