@@ -2,7 +2,9 @@ package crossnote.desktop
 
 import crossnote.app.note.NoteAppService
 import crossnote.domain.note.NoteId
+import crossnote.domain.revision.RevisionId
 import crossnote.infra.persistence.InMemoryNoteRepository
+import crossnote.infra.persistence.InMemoryRevisionRepository
 import crossnote.infra.persistence.SystemClock
 import crossnote.infra.persistence.UuidIdGenerator
 import javafx.application.Application
@@ -14,12 +16,14 @@ import javafx.scene.layout.BorderPane
 import javafx.scene.layout.HBox
 import javafx.scene.layout.Priority
 import javafx.scene.layout.VBox
+import javafx.stage.Modality
 import javafx.stage.Stage
 
 class DesktopApp : Application() {
 
     private val service = NoteAppService(
         repo = InMemoryNoteRepository(),
+        revisionRepo = InMemoryRevisionRepository(),
         ids = UuidIdGenerator(),
         clock = SystemClock()
     )
@@ -93,7 +97,7 @@ class DesktopApp : Application() {
                     statusLabel.text = "Gespeichert (neu)"
                 } else {
                     service.updateNote(NoteId(id), title, content)
-                    statusLabel.text = "Gespeichert"
+                    statusLabel.text = "Gespeichert (Revision erstellt)"
                 }
 
                 refreshList()
@@ -115,7 +119,7 @@ class DesktopApp : Application() {
             }
         }
 
-        val restoreButton = Button("Wiederherstellen").apply {
+        val restoreTrashButton = Button("Wiederherstellen").apply {
             isVisible = false
             isManaged = false
             setOnAction {
@@ -131,14 +135,28 @@ class DesktopApp : Application() {
         }
 
         fun updateModeButtons() {
-            restoreButton.isVisible = showTrash
-            restoreButton.isManaged = showTrash
+            restoreTrashButton.isVisible = showTrash
+            restoreTrashButton.isManaged = showTrash
 
             trashButton.isVisible = !showTrash
             trashButton.isManaged = !showTrash
 
             saveButton.isDisable = showTrash
             newButton.isDisable = showTrash
+        }
+
+        val revisionsButton = Button("Revisionen").apply {
+            setOnAction {
+                if (showTrash) return@setOnAction
+                val id = selectedId ?: return@setOnAction
+                openRevisionsDialog(stage, NoteId(id)) {
+                    val refreshed = service.getNote(NoteId(id))
+                    titleField.text = refreshed.title
+                    contentArea.text = refreshed.content
+                    refreshList()
+                    statusLabel.text = "Auf Revision zurückgesetzt"
+                }
+            }
         }
 
         trashToggle.selectedProperty().addListener { _, _, _ ->
@@ -159,7 +177,7 @@ class DesktopApp : Application() {
         updateModeButtons()
         refreshList()
 
-        val buttons = HBox(10.0, newButton, saveButton, trashButton, restoreButton)
+        val buttons = HBox(10.0, newButton, saveButton, trashButton, restoreTrashButton, revisionsButton)
         val editor = VBox(10.0, trashToggle, titleField, contentArea, buttons, statusLabel).apply {
             padding = Insets(12.0)
             VBox.setVgrow(contentArea, Priority.ALWAYS)
@@ -170,9 +188,51 @@ class DesktopApp : Application() {
             center = editor
         }
 
-        stage.title = "CrossNote (Papierkorb MVP)"
-        stage.scene = Scene(root, 980.0, 680.0)
+        stage.title = "CrossNote (Revisionen MVP)"
+        stage.scene = Scene(root, 1050.0, 700.0)
         stage.show()
+    }
+
+    private fun openRevisionsDialog(owner: Stage, noteId: NoteId, onRestored: () -> Unit) {
+        val revisions = service.listRevisions(noteId)
+        val items = FXCollections.observableArrayList(revisions.map { it.id to it.createdAtIso })
+
+        val listView = ListView<Pair<String, String>>(items).apply {
+            setCellFactory {
+                object : ListCell<Pair<String, String>>() {
+                    override fun updateItem(item: Pair<String, String>?, empty: Boolean) {
+                        super.updateItem(item, empty)
+                        text = if (empty || item == null) "" else item.second
+                    }
+                }
+            }
+        }
+
+        val restoreButton = Button("Auf Revision zurücksetzen")
+        val infoLabel = Label("Wähle eine Revision aus")
+
+        restoreButton.setOnAction {
+            val selected = listView.selectionModel.selectedItem ?: return@setOnAction
+            val revId = RevisionId(selected.first)
+
+            service.restoreFromRevision(noteId, revId)
+
+            onRestored()
+            infoLabel.text = "Wiederhergestellt ✅"
+        }
+
+        val root = VBox(10.0, Label("Revisionen (neueste zuerst)"), listView, restoreButton, infoLabel).apply {
+            padding = Insets(12.0)
+            VBox.setVgrow(listView, Priority.ALWAYS)
+        }
+
+        val dialog = Stage().apply {
+            initOwner(owner)
+            initModality(Modality.WINDOW_MODAL)
+            title = "Revisionen"
+            scene = Scene(root, 520.0, 520.0)
+        }
+        dialog.show()
     }
 }
 
