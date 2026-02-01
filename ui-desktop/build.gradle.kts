@@ -1,7 +1,7 @@
 plugins {
-    kotlin("jvm") version "2.0.20"
+    kotlin("jvm")
     application
-    id("org.openjfx.javafxplugin") version "0.1.0"
+    id("org.openjfx.javafxplugin")
 }
 
 kotlin {
@@ -14,7 +14,6 @@ dependencies {
 }
 
 application {
-    // Das setzen wir gleich, sobald eure Main-Klasse existiert
     mainClass.set("crossnote.desktop.DesktopAppKt")
 }
 

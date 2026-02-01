@@ -1,11 +1,10 @@
 plugins {
-    kotlin("jvm") version "2.0.20"
+    kotlin("jvm")
+    `java-library`
 }
 
-kotlin {
-    jvmToolchain(21)
-}
+kotlin { jvmToolchain(21) }
 
 dependencies {
-    implementation(project(":core-domain"))
+    api(project(":core-domain"))
 }
