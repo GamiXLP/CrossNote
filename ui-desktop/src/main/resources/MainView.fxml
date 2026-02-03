@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="crossnote.desktop.MainController">
+
+    <left>
+        <ListView fx:id="notesList" prefWidth="260.0"/>
+    </left>
+
+    <center>
+        <VBox spacing="10.0">
+            <padding>
+                <Insets top="12" right="12" bottom="12" left="12"/>
+            </padding>
+
+            <CheckBox fx:id="trashToggle" text="Papierkorb anzeigen"/>
+
+            <TextField fx:id="titleField" promptText="Titel"/>
+
+            <TextArea fx:id="contentArea"
+                      promptText="Inhalt"
+                      wrapText="true"
+                      VBox.vgrow="ALWAYS"/>
+
+            <HBox spacing="10.0">
+                <Button fx:id="newButton" text="Neu"/>
+                <Button fx:id="saveButton" text="Speichern"/>
+                <Button fx:id="trashButton" text="In Papierkorb"/>
+                <Button fx:id="restoreButton" text="Wiederherstellen"/>
+                <Button fx:id="purgeButton" text="Endgültig löschen"/>
+                <Button fx:id="revisionsButton" text="Revisionen"/>
+            </HBox>
+
+            <Label fx:id="statusLabel" text="Bereit"/>
+        </VBox>
+    </center>
+
+</BorderPane>
