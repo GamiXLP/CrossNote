@@ -3,8 +3,9 @@ package crossnote.desktop
 import crossnote.app.note.NoteAppService
 import crossnote.domain.note.NoteId
 import crossnote.domain.revision.RevisionId
-import crossnote.infra.persistence.InMemoryNoteRepository
-import crossnote.infra.persistence.InMemoryRevisionRepository
+import crossnote.infra.persistence.SqliteDatabase
+import crossnote.infra.persistence.SqliteNoteRepository
+import crossnote.infra.persistence.SqliteRevisionRepository
 import crossnote.infra.persistence.SystemClock
 import crossnote.infra.persistence.UuidIdGenerator
 import javafx.application.Application
@@ -18,17 +19,22 @@ import javafx.scene.layout.Priority
 import javafx.scene.layout.VBox
 import javafx.stage.Modality
 import javafx.stage.Stage
+import java.nio.file.Paths
 
 class DesktopApp : Application() {
 
+    private val db = SqliteDatabase(
+        Paths.get(System.getProperty("user.home"), ".crossnote", "crossnote.db")
+    )
+
     private val service = NoteAppService(
-        repo = InMemoryNoteRepository(),
-        revisionRepo = InMemoryRevisionRepository(),
+        repo = SqliteNoteRepository(db),
+        revisionRepo = SqliteRevisionRepository(db),
         ids = UuidIdGenerator(),
         clock = SystemClock()
     )
 
-    private val listItems = FXCollections.observableArrayList<Pair<String, String>>() // (id, title)
+    private val listItems = FXCollections.observableArrayList<Pair<String, String>>()
     private var selectedId: String? = null
     private var showTrash: Boolean = false
 
@@ -173,7 +179,6 @@ class DesktopApp : Application() {
             }
         }
 
-        // Initial
         updateModeButtons()
         refreshList()
 
@@ -188,9 +193,13 @@ class DesktopApp : Application() {
             center = editor
         }
 
-        stage.title = "CrossNote (Revisionen MVP)"
+        stage.title = "CrossNote (SQLite + Revisionen)"
         stage.scene = Scene(root, 1050.0, 700.0)
         stage.show()
+    }
+
+    override fun stop() {
+        db.close()
     }
 
     private fun openRevisionsDialog(owner: Stage, noteId: NoteId, onRestored: () -> Unit) {
