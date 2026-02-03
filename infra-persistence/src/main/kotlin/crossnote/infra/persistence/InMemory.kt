@@ -15,6 +15,10 @@ class InMemoryNoteRepository : NoteRepository {
     override fun findById(id: NoteId): Note? = data[id.value]
 
     override fun findAll(): List<Note> = data.values.toList()
+
+    override fun deleteById(id: NoteId) {
+        data.remove(id.value)
+    }
 }
 
 class UuidIdGenerator : IdGenerator {

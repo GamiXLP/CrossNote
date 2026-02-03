@@ -6,4 +6,8 @@ interface RevisionRepository {
     fun save(revision: Revision)
     fun findById(id: RevisionId): Revision?
     fun findByNoteId(noteId: NoteId): List<Revision>
+
+    fun deleteById(id: RevisionId)
+    fun deleteByNoteId(noteId: NoteId)
 }
+

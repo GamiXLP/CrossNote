@@ -19,4 +19,13 @@ class InMemoryRevisionRepository : RevisionRepository {
         data.values
             .filter { it.noteId == noteId }
             .sortedByDescending { it.createdAt }
+    
+    override fun deleteById(id: RevisionId) {
+        data.remove(id.value)
+    }
+
+    override fun deleteByNoteId(noteId: NoteId) {
+        val toRemove = data.values.filter { it.noteId == noteId }.map { it.id.value }
+        toRemove.forEach { data.remove(it) }
+    }
 }

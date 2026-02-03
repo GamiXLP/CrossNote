@@ -76,4 +76,12 @@ class SqliteNoteRepository(private val db: SqliteDatabase) : NoteRepository {
             trashedAt = trashedAt
         )
     }
+
+    override fun deleteById(id: NoteId) {
+        val sql = "DELETE FROM notes WHERE id = ?;"
+        conn().prepareStatement(sql).use { ps ->
+            ps.setString(1, id.value)
+            ps.executeUpdate()
+        }
+    }
 }

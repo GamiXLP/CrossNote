@@ -2,6 +2,8 @@ package crossnote.app.note
 
 import crossnote.domain.note.*
 import crossnote.domain.revision.*
+import java.time.Duration
+import java.util.UUID
 
 data class NoteSummaryDto(val id: String, val title: String)
 data class RevisionSummaryDto(val id: String, val createdAtIso: String)
@@ -99,12 +101,41 @@ class NoteAppService(
 
     private fun saveRevisionSnapshot(note: Note) {
         val rev = Revision(
-            id = RevisionId(java.util.UUID.randomUUID().toString()),
+            id = RevisionId(UUID.randomUUID().toString()),
             noteId = note.id,
             title = note.title,
             content = note.content,
             createdAt = clock.now()
         )
         revisionRepo.save(rev)
+    }
+
+    // ---------- Purge / Retention ----------
+
+    fun purgeNotePermanently(id: NoteId) {
+        val existing = repo.findById(id) ?: return
+        if (!existing.isTrashed()) {
+            error("Cannot permanently delete an active note (not in trash).")
+        }
+
+        // Aufräumen von Revisionen (SQLite macht es zusätzlich per CASCADE)
+        revisionRepo.deleteByNoteId(id)
+        repo.deleteById(id)
+    }
+
+    fun purgeTrashedOlderThan(days: Long) {
+        val cutoff = clock.now().minus(Duration.ofDays(days))
+
+        // Kein Smart-Cast über Modulgrenzen: trashedAt einmal in lokale Variable ziehen
+        val expired = repo.findAll()
+            .filter { note ->
+                val trashedAt = note.trashedAt
+                trashedAt != null && trashedAt.isBefore(cutoff)
+            }
+
+        for (note in expired) {
+            revisionRepo.deleteByNoteId(note.id)
+            repo.deleteById(note.id)
+        }
     }
 }
