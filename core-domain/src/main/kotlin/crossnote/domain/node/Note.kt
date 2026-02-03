@@ -25,6 +25,8 @@ interface NoteRepository {
     fun save(note: Note)
     fun findById(id: NoteId): Note?
     fun findAll(): List<Note>
+
+    fun deleteById(id: NoteId)
 }
 
 interface IdGenerator {

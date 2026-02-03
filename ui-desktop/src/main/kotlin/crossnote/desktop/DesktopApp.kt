@@ -39,6 +39,7 @@ class DesktopApp : Application() {
     private var showTrash: Boolean = false
 
     override fun start(stage: Stage) {
+        service.purgeTrashedOlderThan(30)
         val listView = ListView<Pair<String, String>>(listItems).apply {
             prefWidth = 260.0
             setCellFactory {
@@ -125,6 +126,21 @@ class DesktopApp : Application() {
             }
         }
 
+        val purgeButton = Button("Endgültig löschen").apply {
+            isVisible = false
+            isManaged = false
+            setOnAction {
+                if (!showTrash) return@setOnAction
+                val id = selectedId ?: return@setOnAction
+
+                service.purgeNotePermanently(NoteId(id))
+                statusLabel.text = "Endgültig gelöscht"
+                clearEditor()
+                refreshList()
+                listView.selectionModel.clearSelection()
+            }
+        }
+
         val restoreTrashButton = Button("Wiederherstellen").apply {
             isVisible = false
             isManaged = false
@@ -143,6 +159,9 @@ class DesktopApp : Application() {
         fun updateModeButtons() {
             restoreTrashButton.isVisible = showTrash
             restoreTrashButton.isManaged = showTrash
+
+            purgeButton.isVisible = showTrash
+            purgeButton.isManaged = showTrash
 
             trashButton.isVisible = !showTrash
             trashButton.isManaged = !showTrash
@@ -182,7 +201,7 @@ class DesktopApp : Application() {
         updateModeButtons()
         refreshList()
 
-        val buttons = HBox(10.0, newButton, saveButton, trashButton, restoreTrashButton, revisionsButton)
+        val buttons = HBox(10.0, newButton, saveButton, trashButton, restoreTrashButton, purgeButton, revisionsButton)
         val editor = VBox(10.0, trashToggle, titleField, contentArea, buttons, statusLabel).apply {
             padding = Insets(12.0)
             VBox.setVgrow(contentArea, Priority.ALWAYS)

@@ -73,4 +73,20 @@ class SqliteRevisionRepository(private val db: SqliteDatabase) : RevisionReposit
             createdAt = createdAt
         )
     }
+
+    override fun deleteById(id: RevisionId) {
+        val sql = "DELETE FROM revisions WHERE id = ?;"
+        conn().prepareStatement(sql).use { ps ->
+            ps.setString(1, id.value)
+            ps.executeUpdate()
+        }
+    }
+
+    override fun deleteByNoteId(noteId: NoteId) {
+        val sql = "DELETE FROM revisions WHERE note_id = ?;"
+        conn().prepareStatement(sql).use { ps ->
+            ps.setString(1, noteId.value)
+            ps.executeUpdate()
+        }
+    }
 }
