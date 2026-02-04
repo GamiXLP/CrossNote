@@ -4,11 +4,20 @@ import crossnote.app.note.NoteAppService
 import crossnote.domain.note.NoteId
 import crossnote.domain.revision.RevisionId
 import crossnote.infra.persistence.*
+import crossnote.domain.settings.getBoolean
+import crossnote.domain.settings.setBoolean
+
 import javafx.collections.FXCollections
 import javafx.collections.transformation.FilteredList
 import javafx.fxml.FXML
 import javafx.scene.control.*
 import javafx.scene.layout.AnchorPane
+import javafx.scene.layout.Priority
+import javafx.scene.layout.VBox
+import javafx.geometry.Insets
+import javafx.stage.Modality
+import javafx.stage.Stage
+import javafx.event.ActionEvent
 import java.nio.file.Paths
 import java.time.Duration
 import java.time.Instant
@@ -19,6 +28,7 @@ class MainController {
 
     // ---------- Persistence / Service ----------
     private val db = SqliteDatabase(Paths.get(System.getProperty("user.home"), ".crossnote", "crossnote.db"))
+    private val settingsRepo = SqliteSettingsRepository(db)
     private val service = NoteAppService(
         repo = SqliteNoteRepository(db),
         revisionRepo = SqliteRevisionRepository(db),
@@ -198,20 +208,25 @@ class MainController {
 
         refreshNotebookList()
         setCenterMode()
+
+        BTNdarkmode.sceneProperty().addListener { _, _, scene ->
+            if (scene != null) {
+                darkMode = settingsRepo.getBoolean("darkMode", false)
+                applyTheme()
+            }
+        }
+
     }
 
+
     @FXML
-    fun darkmode_on() {
-        val root = BTNdarkmode.scene.root
+    fun darkmode_on(event: ActionEvent) {
+
         darkMode = !darkMode
 
-        if (darkMode) {
-            if (!root.styleClass.contains("dark")) root.styleClass.add("dark")
-            BTNdarkmode.text = "Light Mode"
-        } else {
-            root.styleClass.remove("dark")
-            BTNdarkmode.text = "Dark Mode"
-        }
+        applyTheme()
+
+        settingsRepo.setBoolean("darkMode", darkMode)
     }
 
     private fun showLeftPane(which: AnchorPane) {
@@ -473,6 +488,24 @@ class MainController {
             buttonTypes.setAll(ButtonType.CANCEL, ButtonType.OK)
         }
 
+    private fun applyTheme() {
+        val root = BTNdarkmode.scene.root
+
+        if (darkMode) {
+            if (!root.styleClass.contains("dark")) {
+                root.styleClass.add("dark")
+            }
+            BTNdarkmode.text = "Light Mode"
+        } else {
+            root.styleClass.remove("dark")
+            BTNdarkmode.text = "Dark Mode"
+        }
+    }
+
+
+    private fun selectInList(list: ListView<Pair<String, String>>, id: String) {
+        val idx = list.items.indexOfFirst { it.first == id }
+        if (idx >= 0) list.selectionModel.select(idx)
         val result = confirm.showAndWait()
         if (result.isEmpty || result.get() != ButtonType.OK) return
 
