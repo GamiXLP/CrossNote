@@ -144,4 +144,8 @@ class NoteAppService(
 
     fun clockNowForUi() = clock.now()
 
+    fun deleteRevision(revisionId: RevisionId) {
+        revisionRepo.deleteById(revisionId)
+    }
+
 }

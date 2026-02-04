@@ -78,7 +78,8 @@ class SqliteRevisionRepository(private val db: SqliteDatabase) : RevisionReposit
         val sql = "DELETE FROM revisions WHERE id = ?;"
         conn().prepareStatement(sql).use { ps ->
             ps.setString(1, id.value)
-            ps.executeUpdate()
+            val rows = ps.executeUpdate()
+            println("deleteById(${id.value}) -> rows=$rows")
         }
     }
 

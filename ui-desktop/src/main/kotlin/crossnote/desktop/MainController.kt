@@ -11,6 +11,9 @@ import javafx.scene.control.*
 import javafx.scene.layout.AnchorPane
 import java.nio.file.Paths
 import java.time.Duration
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class MainController {
 
@@ -233,8 +236,11 @@ class MainController {
         titleField.isEditable = !editorLocked
         contentArea.isEditable = !editorLocked
 
-        // Delete immer möglich, aber Semantik hängt vom Modus ab
-        BTNdelete.text = if (inTrash) "Endgültig löschen" else "Löschen"
+        BTNdelete.text = when {
+            inTrash -> "Endgültig löschen"
+            inSavestate -> "Speicherstand löschen"
+            else -> "Löschen"
+        }
     }
 
     private fun clearEditorAndSelections() {
@@ -267,10 +273,23 @@ class MainController {
             return
         }
 
-        val revisions = service.listRevisions(NoteId(noteId))
-        savestateItems.setAll(revisions.map { it.id to it.createdAtIso })
+        val revisions = service.listRevisions(NoteId(noteId)) // neueste zuerst (bei euch im Service)
+        val formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss")
+            .withZone(ZoneId.systemDefault())
 
-        LBdataname.text = if (revisions.isEmpty()) "Keine Revisionen vorhanden" else "Revisionen für Notiz: $noteId"
+        // Version 1 = neueste
+        val pretty = revisions.mapIndexed { index, r ->
+            val instant = runCatching { Instant.parse(r.createdAtIso) }.getOrNull()
+            val dateText = if (instant != null) formatter.format(instant) else r.createdAtIso
+            val version = index + 1
+            r.id to "$dateText  –  Version $version"
+        }
+
+        savestateItems.setAll(pretty)
+
+        LBdataname.text =
+            if (revisions.isEmpty()) "Keine Speicherstände vorhanden"
+            else "Revisionen für Notiz: $noteId"
     }
 
     private fun openNote(noteId: String, inTrash: Boolean) {
@@ -326,31 +345,37 @@ class MainController {
      * - Papierkorb: purge (endgültig)
      */
     private fun onDelete() {
-        val id = selectedId ?: return
+        val inTrash = APtrashcan.isVisible
+        val inNotes = APnotebooks.isVisible
+        val inSavestate = APsavestate.isVisible
 
-        if (APtrashcan.isVisible) {
-            // endgültig löschen
-            val confirm = Alert(Alert.AlertType.CONFIRMATION).apply {
-                title = "Endgültig löschen"
-                headerText = "Notiz endgültig löschen?"
-                contentText = "Diese Notiz wird dauerhaft entfernt und kann nicht wiederhergestellt werden."
-                buttonTypes.setAll(ButtonType.CANCEL, ButtonType.OK)
+        when {
+            inSavestate -> {
+                deleteSelectedSavestate()
             }
-            val result = confirm.showAndWait()
-            if (result.isPresent && result.get() == ButtonType.OK) {
-                service.purgeNotePermanently(NoteId(id))
+
+            inTrash -> {
+                val id = selectedId ?: return
+                val confirm = Alert(Alert.AlertType.CONFIRMATION).apply {
+                    title = "Endgültig löschen"
+                    headerText = "Notiz endgültig löschen?"
+                    contentText = "Diese Notiz wird dauerhaft entfernt und kann nicht wiederhergestellt werden."
+                    buttonTypes.setAll(ButtonType.CANCEL, ButtonType.OK)
+                }
+                val result = confirm.showAndWait()
+                if (result.isPresent && result.get() == ButtonType.OK) {
+                    service.purgeNotePermanently(NoteId(id))
+                    clearEditorAndSelections()
+                    refreshTrashList()
+                }
+            }
+
+            inNotes -> {
+                val id = selectedId ?: return
+                service.moveToTrash(NoteId(id))
                 clearEditorAndSelections()
-                refreshTrashList()
+                refreshNotebookList()
             }
-        } else if (APnotebooks.isVisible) {
-            // in Papierkorb verschieben
-            service.moveToTrash(NoteId(id))
-            clearEditorAndSelections()
-            refreshNotebookList()
-            // Optional: direkt Trash aktualisieren, falls später reingeschaltet wird
-            refreshTrashList()
-        } else {
-            // in Savestates: nichts löschen
         }
     }
 
@@ -429,6 +454,39 @@ class MainController {
     private fun selectInList(list: ListView<Pair<String, String>>, id: String) {
         val idx = list.items.indexOfFirst { it.first == id }
         if (idx >= 0) list.selectionModel.select(idx)
+    }
+
+    private fun deleteSelectedSavestate() {
+        if (!APsavestate.isVisible) return
+
+        val selected = LVsavestate.selectionModel.selectedItem ?: run {
+            LBsaved.text = "Kein Speicherstand ausgewählt"
+            return
+        }
+
+        val revId = RevisionId(selected.first)
+
+        val confirm = Alert(Alert.AlertType.CONFIRMATION).apply {
+            title = "Speicherstand löschen"
+            headerText = "Diesen Speicherstand wirklich löschen?"
+            contentText = "Der Speicherstand wird dauerhaft entfernt."
+            buttonTypes.setAll(ButtonType.CANCEL, ButtonType.OK)
+        }
+
+        val result = confirm.showAndWait()
+        if (result.isEmpty || result.get() != ButtonType.OK) return
+
+        service.deleteRevision(revId)
+
+        // UI aufräumen + neu laden
+        LVsavestate.selectionModel.clearSelection()
+        savestateItems.removeIf { it.first == revId.value } // sofort sichtbar
+        refreshSavestates() // DB-Truth
+
+        titleField.text = ""
+        contentArea.text = ""
+        LBlastchange.text = "--"
+        LBsaved.text = "Speicherstand gelöscht"
     }
 
     fun close() {
