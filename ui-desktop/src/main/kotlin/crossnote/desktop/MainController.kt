@@ -1,78 +1,37 @@
 package crossnote.desktop
 
 import crossnote.app.note.NoteAppService
-import crossnote.domain.note.Note
 import crossnote.domain.note.NoteId
-import crossnote.infra.persistence.SqliteDatabase
-import crossnote.infra.persistence.SqliteNoteRepository
-import crossnote.infra.persistence.SqliteRevisionRepository
-import crossnote.infra.persistence.SystemClock
-import crossnote.infra.persistence.UuidIdGenerator
+import crossnote.domain.revision.RevisionId
+import crossnote.infra.persistence.*
 import javafx.collections.FXCollections
-import javafx.collections.ObservableList
 import javafx.collections.transformation.FilteredList
 import javafx.fxml.FXML
 import javafx.scene.Node
 import javafx.scene.control.*
 import javafx.scene.input.MouseEvent
 import javafx.scene.layout.AnchorPane
-import javafx.stage.FileChooser
+import javafx.scene.layout.Priority
+import javafx.scene.layout.VBox
+import javafx.geometry.Insets
+import javafx.stage.Modality
+import javafx.stage.Stage
 import java.nio.file.Paths
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 /**
- * Finaler Controller, der eure neue MainView.fxml mit dem Core verbindet:
- * - Notizen-Liste (APnotebooks)
- * - Papierkorb-Liste + Wiederherstellen
- * - Speichern / Neue Notiz
- * - Auto-Purge: Papierkorb > 30 Tage wird beim Start gelöscht
- *
- * Hinweis: "Speicherstände" ist hier als Platzhalter gelassen (UI bleibt bedienbar).
+ * MainController passend zu eurer neuen MainView.fxml.
+ * Baut auf eurem funktionierenden alten Controller-Ansatz auf:
+ * - SQLite + NoteAppService
+ * - Notizen anzeigen/öffnen/speichern/neue Notiz
+ * - Papierkorb anzeigen/wiederherstellen/endgültig löschen (Context-Menü)
+ * - Revisionen Dialog
+ * - Dark Mode Toggle (FXML: onMouseClicked="#dasdakj")
+ * - Suche in Notizen/Papierkorb über TFnotebook/TFtrashcan
  */
 class MainController {
 
-    // --- LEFT: Layer-Panes im StackPane ---
-    @FXML lateinit var APnotebooks: AnchorPane
-    @FXML lateinit var APtrashcan: AnchorPane
-    @FXML lateinit var APsavestate: AnchorPane
-
-    // --- LEFT: Notebooks/Notes ---
-    @FXML lateinit var TFnotebook: TextField
-    @FXML lateinit var LVnotebook: ListView<NoteListItem>
-
-    // --- LEFT: Trashcan ---
-    @FXML lateinit var TFtrashcan: TextField
-    @FXML lateinit var LVtrashcan: ListView<NoteListItem>
-    @FXML lateinit var BTNrestore: Button
-
-    // --- LEFT: Savestates ---
-    @FXML lateinit var LBdataname: Label
-    @FXML lateinit var LVsavestate: ListView<String>
-    @FXML lateinit var BTNload: Button
-
-    // --- LEFT: Bottom buttons ---
-    @FXML lateinit var BTNtrashcan: Button
-    @FXML lateinit var BTNsavestate: Button
-
-    // --- TOP ---
-    @FXML lateinit var BTNdarkmode: Button
-
-    // --- CENTER ---
-    @FXML lateinit var titleField: TextField
-    @FXML lateinit var contentArea: TextArea
-    @FXML lateinit var BTNsave: Button
-    @FXML lateinit var BTNnewnote: Button
-    @FXML lateinit var LBlastchange: Label
-    @FXML lateinit var LBsaved: Label
-
-    // --- Core / Persistence ---
-    private val db = SqliteDatabase(
-        Paths.get(System.getProperty("user.home"), ".crossnote", "crossnote.db")
-    )
-
+    // ---------- Persistence / Service ----------
+    private val db = SqliteDatabase(Paths.get(System.getProperty("user.home"), ".crossnote", "crossnote.db"))
     private val service = NoteAppService(
         repo = SqliteNoteRepository(db),
         revisionRepo = SqliteRevisionRepository(db),
@@ -80,117 +39,149 @@ class MainController {
         clock = SystemClock()
     )
 
-    // --- UI State ---
-    private var darkMode = false
-    private var currentNoteId: String? = null
-    private var isDirty: Boolean = false
+    // ---------- Left panes ----------
+    @FXML lateinit var APnotebooks: AnchorPane
+    @FXML lateinit var APtrashcan: AnchorPane
+    @FXML lateinit var APsavestate: AnchorPane
 
-    // Listen + Filter
-    private val notebookBase: ObservableList<NoteListItem> = FXCollections.observableArrayList()
-    private val trashBase: ObservableList<NoteListItem> = FXCollections.observableArrayList()
+    // ---------- Notebooks/Notes (links) ----------
+    @FXML lateinit var TFnotebook: TextField
+    @FXML lateinit var LVnotebook: ListView<Pair<String, String>> // (id, title)
 
-    private lateinit var notebookFiltered: FilteredList<NoteListItem>
-    private lateinit var trashFiltered: FilteredList<NoteListItem>
+    // ---------- Trash (links) ----------
+    @FXML lateinit var TFtrashcan: TextField
+    @FXML lateinit var LVtrashcan: ListView<Pair<String, String>> // (id, title)
+    @FXML lateinit var BTNrestore: Button
+
+    // ---------- Savestates (links) ----------
+    @FXML lateinit var LBdataname: Label
+    @FXML lateinit var LVsavestate: ListView<String>
+    @FXML lateinit var BTNload: Button
+
+    // ---------- Bottom left buttons ----------
+    @FXML lateinit var BTNtrashcan: Button
+    @FXML lateinit var BTNsavestate: Button
+
+    // ---------- Top ----------
+    @FXML lateinit var BTNdarkmode: Button
+
+    // ---------- Center ----------
+    @FXML lateinit var titleField: TextField
+    @FXML lateinit var contentArea: TextArea
+    @FXML lateinit var BTNsave: Button
+    @FXML lateinit var BTNnewnote: Button
+    @FXML lateinit var LBlastchange: Label
+    @FXML lateinit var LBsaved: Label
+
+    // ---------- State ----------
+    private val notebookItems = FXCollections.observableArrayList<Pair<String, String>>()
+    private val trashItems = FXCollections.observableArrayList<Pair<String, String>>()
+
+    private lateinit var notebookFiltered: FilteredList<Pair<String, String>>
+    private lateinit var trashFiltered: FilteredList<Pair<String, String>>
+
+    private var selectedId: String? = null
+    private var showTrash: Boolean = false
+    private var darkMode: Boolean = false
 
     @FXML
     fun initialize() {
-        // 1) Auto-Cleanup: alles > 30 Tage im Papierkorb endgültig löschen
+        // Auto-Purge: alles > 30 Tage im Papierkorb endgültig löschen
         service.purgeTrashedOlderThan(30)
 
-        // 2) Left pane default: Notizen
+        // Default-Ansicht: Notizen
         showLeftPane(APnotebooks)
 
-        // 3) CellFactory (damit ListView sauber Titel zeigt)
+        // Filterlisten
+        notebookFiltered = FilteredList(notebookItems) { true }
+        trashFiltered = FilteredList(trashItems) { true }
+        LVnotebook.items = notebookFiltered
+        LVtrashcan.items = trashFiltered
+
+        // CellFactory: zeige Titel
         LVnotebook.setCellFactory {
-            object : ListCell<NoteListItem>() {
-                override fun updateItem(item: NoteListItem?, empty: Boolean) {
+            object : ListCell<Pair<String, String>>() {
+                override fun updateItem(item: Pair<String, String>?, empty: Boolean) {
                     super.updateItem(item, empty)
-                    text = if (empty || item == null) "" else item.title
+                    text = if (empty || item == null) "" else item.second
                 }
             }
         }
         LVtrashcan.setCellFactory {
-            object : ListCell<NoteListItem>() {
-                override fun updateItem(item: NoteListItem?, empty: Boolean) {
+            object : ListCell<Pair<String, String>>() {
+                override fun updateItem(item: Pair<String, String>?, empty: Boolean) {
                     super.updateItem(item, empty)
-                    text = if (empty || item == null) "" else item.title
+                    text = if (empty || item == null) "" else item.second
                 }
             }
         }
 
-        // 4) Filtered Lists einrichten
-        notebookFiltered = FilteredList(notebookBase) { true }
-        trashFiltered = FilteredList(trashBase) { true }
-        LVnotebook.items = notebookFiltered
-        LVtrashcan.items = trashFiltered
-
+        // Suchfelder
         TFnotebook.textProperty().addListener { _, _, newValue ->
             val q = newValue.trim().lowercase()
-            notebookFiltered.setPredicate { it.title.lowercase().contains(q) }
+            notebookFiltered.setPredicate { it.second.lowercase().contains(q) }
         }
         TFtrashcan.textProperty().addListener { _, _, newValue ->
             val q = newValue.trim().lowercase()
-            trashFiltered.setPredicate { it.title.lowercase().contains(q) }
+            trashFiltered.setPredicate { it.second.lowercase().contains(q) }
         }
 
-        // 5) Kontextmenü: Papierkorb -> endgültig löschen
-        LVtrashcan.contextMenu = ContextMenu().apply {
-            val purge = MenuItem("Endgültig löschen").apply {
-                setOnAction {
-                    val selected = LVtrashcan.selectionModel.selectedItem ?: return@setOnAction
-                    confirmAndPurge(selected)
-                }
+        // Auswahl -> Note öffnen
+        LVnotebook.selectionModel.selectedItemProperty().addListener { _, _, new ->
+            if (new != null) {
+                showTrash = false
+                openNote(new.first)
             }
-            items.add(purge)
+        }
+        LVtrashcan.selectionModel.selectedItemProperty().addListener { _, _, new ->
+            if (new != null) {
+                showTrash = true
+                openNote(new.first) // wir zeigen Inhalt auch im Papierkorb an
+            }
         }
 
-        // 6) Buttons
+        // Bottom buttons
         BTNtrashcan.setOnAction {
             showLeftPane(APtrashcan)
+            showTrash = true
             refreshTrashList()
+            setCenterMode()
         }
         BTNsavestate.setOnAction {
             showLeftPane(APsavestate)
-            // bleibt erstmal placeholder
+            // placeholder
         }
 
-        BTNrestore.setOnAction { restoreSelectedTrashItem() }
-        BTNsave.setOnAction { saveNote() }
-        BTNnewnote.setOnAction { newNote() }
-        BTNload.setOnAction { loadSelectedSavestatePlaceholder() }
+        // Actions
+        BTNrestore.setOnAction { onRestore() }
+        BTNsave.setOnAction { onSave() }
+        BTNnewnote.setOnAction { onNew() }
 
-        // 7) List selection -> Note laden
-        LVnotebook.selectionModel.selectedItemProperty().addListener { _, _, new ->
-            if (new != null) openNote(new)
-        }
-        LVtrashcan.selectionModel.selectedItemProperty().addListener { _, _, new ->
-            // Papierkorb: Note darf angezeigt werden, aber wir lassen Editing zu/aus je nach Wunsch.
-            // Für MVP: anzeigen, aber nicht automatisch speichern.
-            if (new != null) openTrashNote(new)
+        // Kontextmenü im Papierkorb: Endgültig löschen
+        LVtrashcan.contextMenu = ContextMenu().apply {
+            val purgeItem = MenuItem("Endgültig löschen").apply {
+                setOnAction { onPurgeSelectedTrash() }
+            }
+            items.add(purgeItem)
         }
 
-        // 8) Dirty Tracking: sobald der User tippt, setzen wir "Nicht gespeichert"
-        titleField.textProperty().addListener { _, _, _ -> markDirty() }
-        contentArea.textProperty().addListener { _, _, _ -> markDirty() }
-
-        // 9) Initiale Labels + Daten
+        // Initial status
         LBsaved.text = "Nicht gespeichert"
         LBlastchange.text = "--"
         LBdataname.text = "Dateiname"
 
-        // Demo-Savestates (placeholder)
-        LVsavestate.items = FXCollections.observableArrayList(
-            "backup-2026-02-01.json",
-            "backup-2026-01-15.json"
-        )
+        BTNload.setOnAction {
+            val selected = LVsavestate.selectionModel.selectedItem ?: return@setOnAction
+            LBdataname.text = selected
+            LBsaved.text = "Geladen (Platzhalter)"
+        }
 
+        // Initial load
         refreshNotebookList()
+        setCenterMode()
     }
 
-    /**
-     * Handler aus deiner FXML:
-     * <Button ... onMouseClicked="#dasdakj" ... />
-     */
+    // ----- Dark Mode (FXML onMouseClicked="#dasdakj") -----
     @FXML
     fun dasdakj(event: MouseEvent) {
         val root = (event.source as? Node)?.scene?.root ?: return
@@ -205,192 +196,177 @@ class MainController {
         }
     }
 
-    // ----------------------------
-    // Notes Pane (APnotebooks)
-    // ----------------------------
-
-    private fun refreshNotebookList() {
-        val notes = service.listActiveNotes()
-        notebookBase.setAll(notes.map { NoteListItem(it.id, it.title) })
-    }
-
-    private fun openNote(item: NoteListItem) {
-        // Wenn ungespeichert, warnen (minimal)
-        if (isDirty && currentNoteId != item.id) {
-            // MVP: keine komplizierte Merge-Logik, nur Hinweis
-            // Du kannst hier auch Dialog "Speichern?" machen
-        }
-
-        val note = service.getNote(NoteId(item.id))
-        currentNoteId = note.id.value
-
-        // Setzen ohne dirty neu auszulösen
-        setEditorContent(note)
-
-        LBsaved.text = "Nicht gespeichert"
-        LBlastchange.text = formatInstant(note.updatedAt)
-    }
-
-    private fun newNote() {
-        currentNoteId = null
-        titleField.clear()
-        contentArea.clear()
-        isDirty = false
-        LBsaved.text = "Nicht gespeichert"
-        LBlastchange.text = "--"
-        titleField.requestFocus()
-    }
-
-    private fun saveNote() {
-        // Nicht im Papierkorb speichern
-        if (APtrashcan.isVisible) return
-
-        val title = titleField.text ?: ""
-        val content = contentArea.text ?: ""
-
-        val id = currentNoteId
-        if (id == null) {
-            val newId = service.createNote(title, content)
-            currentNoteId = newId.value
-            LBsaved.text = "Gespeichert"
-        } else {
-            service.updateNote(NoteId(id), title, content)
-            LBsaved.text = "Gespeichert"
-        }
-
-        isDirty = false
-        val refreshed = service.getNote(NoteId(currentNoteId!!))
-        LBlastchange.text = formatInstant(refreshed.updatedAt)
-
-        refreshNotebookList()
-
-        // Selektiere gespeicherte Note in der Liste
-        selectInList(LVnotebook, currentNoteId!!)
-    }
-
-    // ----------------------------
-    // Trash Pane (APtrashcan)
-    // ----------------------------
-
-    private fun refreshTrashList() {
-        val notes = service.listTrashedNotes()
-        trashBase.setAll(notes.map { NoteListItem(it.id, it.title) })
-    }
-
-    private fun restoreSelectedTrashItem() {
-        val selected = LVtrashcan.selectionModel.selectedItem ?: return
-        service.restore(NoteId(selected.id))
-
-        // UI refresh
-        refreshTrashList()
-        refreshNotebookList()
-        clearEditorForTrashAction("Wiederhergestellt")
-    }
-
-    private fun confirmAndPurge(selected: NoteListItem) {
-        val alert = Alert(Alert.AlertType.CONFIRMATION).apply {
-            title = "Endgültig löschen"
-            headerText = "Notiz endgültig löschen?"
-            contentText = "Diese Notiz wird dauerhaft entfernt und kann nicht wiederhergestellt werden."
-            buttonTypes.setAll(ButtonType.CANCEL, ButtonType.OK)
-        }
-
-        val result = alert.showAndWait()
-        if (result.isPresent && result.get() == ButtonType.OK) {
-            service.purgeNotePermanently(NoteId(selected.id))
-            refreshTrashList()
-            clearEditorForTrashAction("Endgültig gelöscht")
-        }
-    }
-
-    private fun openTrashNote(item: NoteListItem) {
-        val note = service.getNote(NoteId(item.id))
-        currentNoteId = note.id.value
-
-        // Anzeigen, aber wir deaktivieren Save/New, solange Trash pane aktiv ist
-        setEditorContent(note)
-        LBsaved.text = "Papierkorb"
-        LBlastchange.text = formatInstant(note.updatedAt)
-    }
-
-    private fun clearEditorForTrashAction(status: String) {
-        // Editor leeren und Status setzen
-        currentNoteId = null
-        titleField.clear()
-        contentArea.clear()
-        isDirty = false
-        LBsaved.text = status
-        LBlastchange.text = "--"
-    }
-
-    // ----------------------------
-    // Savestates Pane (APsavestate) - Placeholder
-    // ----------------------------
-
-    private fun loadSelectedSavestatePlaceholder() {
-        val selected = LVsavestate.selectionModel.selectedItem ?: return
-        LBdataname.text = selected
-        LBsaved.text = "Geladen (Platzhalter)"
-        LBlastchange.text = nowString()
-    }
-
-    // ----------------------------
-    // Helpers
-    // ----------------------------
-
+    // ----- Left Pane Switch -----
     private fun showLeftPane(which: AnchorPane) {
         val panes = listOf(APnotebooks, APtrashcan, APsavestate)
         panes.forEach {
             it.isVisible = false
             it.isManaged = false
         }
-
         which.isVisible = true
         which.isManaged = true
-
-        // Modusabhängige Buttons (Papierkorb soll nicht "speichern" können)
-        val inTrash = which == APtrashcan
-        BTNsave.isDisable = inTrash
-        BTNnewnote.isDisable = inTrash
     }
 
-    private fun markDirty() {
-        // Wenn gerade keine Note geladen ist und der User tippt, gilt das auch als "dirty"
-        // Wir setzen nur, wenn wir nicht sowieso schon "Gespeichert" anzeigen.
-        isDirty = true
-        if (!APtrashcan.isVisible) {
-            LBsaved.text = "Nicht gespeichert"
+    // ----- Center Mode (disable save/new when trash visible) -----
+    private fun setCenterMode() {
+        val inTrash = APtrashcan.isVisible
+        BTNsave.isDisable = inTrash
+        BTNnewnote.isDisable = inTrash
+        BTNrestore.isDisable = !inTrash
+    }
+
+    // ----- Data refresh -----
+    private fun refreshNotebookList() {
+        val summaries = service.listActiveNotes()
+        notebookItems.setAll(summaries.map { it.id to it.title })
+    }
+
+    private fun refreshTrashList() {
+        val summaries = service.listTrashedNotes()
+        trashItems.setAll(summaries.map { it.id to it.title })
+    }
+
+    // ----- Open / New / Save -----
+    private fun openNote(noteId: String) {
+        selectedId = noteId
+        val note = service.getNote(NoteId(noteId))
+        titleField.text = note.title
+        contentArea.text = note.content
+        LBlastchange.text = note.updatedAt.toString()
+        LBsaved.text = if (APtrashcan.isVisible) "Papierkorb" else "Nicht gespeichert"
+    }
+
+    private fun clearEditor() {
+        selectedId = null
+        titleField.text = ""
+        contentArea.text = ""
+        LBlastchange.text = "--"
+        LBsaved.text = "Nicht gespeichert"
+    }
+
+    private fun onNew() {
+        if (APtrashcan.isVisible) return
+        clearEditor()
+        titleField.requestFocus()
+    }
+
+    private fun onSave() {
+        if (APtrashcan.isVisible) return
+
+        val title = titleField.text ?: ""
+        val content = contentArea.text ?: ""
+
+        val id = selectedId
+        if (id == null) {
+            val newId = service.createNote(title, content)
+            selectedId = newId.value
+            LBsaved.text = "Gespeichert (neu)"
+        } else {
+            service.updateNote(NoteId(id), title, content)
+            LBsaved.text = "Gespeichert (Revision erstellt)"
+        }
+
+        val refreshed = service.getNote(NoteId(selectedId!!))
+        LBlastchange.text = refreshed.updatedAt.toString()
+
+        refreshNotebookList()
+        selectInList(LVnotebook, selectedId!!)
+    }
+
+    // ----- Trash actions -----
+    private fun onRestore() {
+        if (!APtrashcan.isVisible) return
+        val id = selectedId ?: return
+        service.restore(NoteId(id))
+        clearEditor()
+        refreshTrashList()
+        refreshNotebookList()
+        LVtrashcan.selectionModel.clearSelection()
+    }
+
+    private fun onPurgeSelectedTrash() {
+        if (!APtrashcan.isVisible) return
+        val selected = LVtrashcan.selectionModel.selectedItem ?: return
+        val id = selected.first
+
+        val confirm = Alert(Alert.AlertType.CONFIRMATION).apply {
+            title = "Endgültig löschen"
+            headerText = "Notiz endgültig löschen?"
+            contentText = "Diese Notiz wird dauerhaft entfernt und kann nicht wiederhergestellt werden."
+            buttonTypes.setAll(ButtonType.CANCEL, ButtonType.OK)
+        }
+        val result = confirm.showAndWait()
+        if (result.isPresent && result.get() == ButtonType.OK) {
+            service.purgeNotePermanently(NoteId(id))
+            clearEditor()
+            refreshTrashList()
+            LVtrashcan.selectionModel.clearSelection()
         }
     }
 
-    private fun setEditorContent(note: Note) {
-        // Editor befüllen ohne dirty-Flag dauerhaft zu versauen:
-        // Wir setzen kurz isDirty=false, füllen, dann wieder false.
-        isDirty = false
-        titleField.text = note.title
-        contentArea.text = note.content
-        isDirty = false
+    // ----- Revisionen -----
+    // In eurer neuen FXML gibt es keinen Revisionen-Button -> wir hängen es an ein Kontextmenü der Notizenliste.
+    // Wenn ihr später einen Button einbaut, ruft einfach openRevisionsForCurrentNote() auf.
+    private fun openRevisionsForCurrentNote() {
+        if (APtrashcan.isVisible) return
+        val id = selectedId ?: return
+        val stage = LVnotebook.scene.window as Stage
+        openRevisionsDialog(stage, NoteId(id)) {
+            val refreshed = service.getNote(NoteId(id))
+            titleField.text = refreshed.title
+            contentArea.text = refreshed.content
+            refreshNotebookList()
+            LBsaved.text = "Auf Revision zurückgesetzt"
+            LBlastchange.text = refreshed.updatedAt.toString()
+        }
     }
 
-    private fun selectInList(list: ListView<NoteListItem>, id: String) {
-        val idx = list.items.indexOfFirst { it.id == id }
+    private fun openRevisionsDialog(owner: Stage, noteId: NoteId, onRestored: () -> Unit) {
+        val revisions = service.listRevisions(noteId)
+        val items = FXCollections.observableArrayList(revisions.map { it.id to it.createdAtIso })
+
+        val listView = ListView<Pair<String, String>>(items).apply {
+            setCellFactory {
+                object : ListCell<Pair<String, String>>() {
+                    override fun updateItem(item: Pair<String, String>?, empty: Boolean) {
+                        super.updateItem(item, empty)
+                        text = if (empty || item == null) "" else item.second
+                    }
+                }
+            }
+        }
+
+        val restoreButton = Button("Auf Revision zurücksetzen")
+        val infoLabel = Label("Wähle eine Revision aus")
+
+        restoreButton.setOnAction {
+            val selected = listView.selectionModel.selectedItem ?: return@setOnAction
+            val revId = RevisionId(selected.first)
+            service.restoreFromRevision(noteId, revId)
+            onRestored()
+            infoLabel.text = "Wiederhergestellt ✅"
+        }
+
+        val root = VBox(10.0, Label("Revisionen (neueste zuerst)"), listView, restoreButton, infoLabel).apply {
+            padding = Insets(12.0)
+            VBox.setVgrow(listView, Priority.ALWAYS)
+        }
+
+        val dialog = Stage().apply {
+            initOwner(owner)
+            initModality(Modality.WINDOW_MODAL)
+            title = "Revisionen"
+            scene = javafx.scene.Scene(root, 520.0, 520.0)
+        }
+        dialog.show()
+    }
+
+    private fun selectInList(list: ListView<Pair<String, String>>, id: String) {
+        val idx = list.items.indexOfFirst { it.first == id }
         if (idx >= 0) list.selectionModel.select(idx)
     }
 
-    private fun formatInstant(instant: Instant): String {
-        val dt = LocalDateTime.ofInstant(instant, ZoneId.systemDefault())
-        val fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-        return dt.format(fmt)
-    }
-
-    private fun nowString(): String {
-        val fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-        return LocalDateTime.now().format(fmt)
+    fun close() {
+        db.close()
     }
 }
-
-/**
- * UI-List item: id + title
- * toString() ist nicht nötig, weil wir eine CellFactory verwenden.
- */
-data class NoteListItem(val id: String, val title: String)
