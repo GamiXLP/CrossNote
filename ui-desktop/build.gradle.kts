@@ -23,7 +23,9 @@ javafx {
 }
 
 dependencies {
-    // ⚠️ NUR UI – keine Domain-Module, bis UI läuft
+    implementation(project(":core-application"))
+    implementation(project(":infra-persistence"))
+    implementation(project(":core-domain"))
 }
 
 application {
