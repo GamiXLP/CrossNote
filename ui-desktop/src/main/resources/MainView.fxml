@@ -27,7 +27,7 @@
          </ImageView>
             <Label styleClass="app-title" text="CrossNote" HBox.hgrow="ALWAYS" />
             <Region HBox.hgrow="ALWAYS" />
-         <Button fx:id="BTNdarkmode" onAction="#darkmode_on" styleClass="primary-button" text="Dark Mode"/>
+         <Button fx:id="BTNdarkmode" onAction="#darkmode_on" styleClass="primary-button" text="Dark Mode" />
         </HBox>
     </top>
 
@@ -36,7 +36,7 @@
         <VBox minWidth="400.0" spacing="10" styleClass="sidebar">
          <StackPane maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" VBox.vgrow="ALWAYS">
             <children>
-               <AnchorPane fx:id="APnotebooks" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" visible="false">
+               <AnchorPane fx:id="APnotebooks" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308">
                   <children>
                      <VBox maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
                         <children>
@@ -64,7 +64,7 @@
                      </VBox>
                   </children>
                </AnchorPane>
-               <AnchorPane fx:id="APsavestate">
+               <AnchorPane fx:id="APsavestate" visible="false">
                   <children>
                      <VBox maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
                         <children>
@@ -103,6 +103,7 @@
                <children>
                      <TextField fx:id="titleField" promptText="Titel der Notiz" styleClass="note-title" HBox.hgrow="ALWAYS" />
                       <Button fx:id="BTNsave" styleClass="primary-button" text="Speichern" HBox.hgrow="NEVER" />
+                  <Button fx:id="BTNdelete" mnemonicParsing="false" styleClass="primary-button" text="Löschen" />
                   <Button fx:id="BTNnewnote" styleClass="primary-button" text="＋ Neue Notiz" HBox.hgrow="NEVER" />
                </children>
             </HBox>

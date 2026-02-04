@@ -67,6 +67,7 @@ class MainController {
     @FXML lateinit var titleField: TextField
     @FXML lateinit var contentArea: TextArea
     @FXML lateinit var BTNsave: Button
+    @FXML lateinit var BTNdelete: Button
     @FXML lateinit var BTNnewnote: Button
     @FXML lateinit var LBlastchange: Label
     @FXML lateinit var LBsaved: Label
