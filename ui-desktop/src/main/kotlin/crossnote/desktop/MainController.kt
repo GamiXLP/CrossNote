@@ -19,14 +19,12 @@ import javafx.stage.Stage
 import java.nio.file.Paths
 
 /**
- * MainController passend zu eurer neuen MainView.fxml.
- * Baut auf eurem funktionierenden alten Controller-Ansatz auf:
- * - SQLite + NoteAppService
- * - Notizen anzeigen/öffnen/speichern/neue Notiz
- * - Papierkorb anzeigen/wiederherstellen/endgültig löschen (Context-Menü)
- * - Revisionen Dialog
+ * MainController passend zu eurer neuen MainView.fxml
+ * - Notizen (links) + Suche
+ * - Papierkorb (links) + Suche + Wiederherstellen + Endgültig löschen (Context Menü)
+ * - Speicherstände (links) Platzhalter
+ * - Toggle-Navigation: Papierkorb/Speicherstände erneut klicken -> zurück zur Notizen-Ansicht
  * - Dark Mode Toggle (FXML: onMouseClicked="#dasdakj")
- * - Suche in Notizen/Papierkorb über TFnotebook/TFtrashcan
  */
 class MainController {
 
@@ -81,7 +79,6 @@ class MainController {
     private lateinit var trashFiltered: FilteredList<Pair<String, String>>
 
     private var selectedId: String? = null
-    private var showTrash: Boolean = false
     private var darkMode: Boolean = false
 
     @FXML
@@ -128,31 +125,41 @@ class MainController {
 
         // Auswahl -> Note öffnen
         LVnotebook.selectionModel.selectedItemProperty().addListener { _, _, new ->
-            if (new != null) {
-                showTrash = false
-                openNote(new.first)
-            }
+            if (new != null) openNote(new.first, inTrash = false)
         }
         LVtrashcan.selectionModel.selectedItemProperty().addListener { _, _, new ->
-            if (new != null) {
-                showTrash = true
-                openNote(new.first) // wir zeigen Inhalt auch im Papierkorb an
-            }
+            if (new != null) openNote(new.first, inTrash = true)
         }
 
-        // Bottom buttons
+        // Toggle: Papierkorb <-> Notizen
         BTNtrashcan.setOnAction {
-            showLeftPane(APtrashcan)
-            showTrash = true
-            refreshTrashList()
+            if (APtrashcan.isVisible) {
+                showLeftPane(APnotebooks)
+                clearEditorAndSelections()
+                refreshNotebookList()
+            } else {
+                showLeftPane(APtrashcan)
+                clearEditorAndSelections()
+                refreshTrashList()
+            }
             setCenterMode()
         }
+
+        // Toggle: Speicherstände <-> Notizen
         BTNsavestate.setOnAction {
-            showLeftPane(APsavestate)
-            // placeholder
+            if (APsavestate.isVisible) {
+                showLeftPane(APnotebooks)
+                clearEditorAndSelections()
+                refreshNotebookList()
+            } else {
+                showLeftPane(APsavestate)
+                clearEditorAndSelections()
+                // Optional: hier später echte Savestates laden
+            }
+            setCenterMode()
         }
 
-        // Actions
+        // Aktionen
         BTNrestore.setOnAction { onRestore() }
         BTNsave.setOnAction { onSave() }
         BTNnewnote.setOnAction { onNew() }
@@ -207,12 +214,30 @@ class MainController {
         which.isManaged = true
     }
 
-    // ----- Center Mode (disable save/new when trash visible) -----
+    // ----- Center Mode (disable save/new when trash visible OR savestate visible) -----
     private fun setCenterMode() {
         val inTrash = APtrashcan.isVisible
-        BTNsave.isDisable = inTrash
-        BTNnewnote.isDisable = inTrash
+        val inSavestate = APsavestate.isVisible
+
+        // In Papierkorb oder Speicherstände soll man im Editor nichts "committen"
+        val editorLocked = inTrash || inSavestate
+
+        BTNsave.isDisable = editorLocked
+        BTNnewnote.isDisable = editorLocked
+
+        // Restore nur im Papierkorb
         BTNrestore.isDisable = !inTrash
+    }
+
+    private fun clearEditorAndSelections() {
+        selectedId = null
+        titleField.text = ""
+        contentArea.text = ""
+        LBlastchange.text = "--"
+        LBsaved.text = "Nicht gespeichert"
+
+        LVnotebook.selectionModel.clearSelection()
+        LVtrashcan.selectionModel.clearSelection()
     }
 
     // ----- Data refresh -----
@@ -227,31 +252,23 @@ class MainController {
     }
 
     // ----- Open / New / Save -----
-    private fun openNote(noteId: String) {
+    private fun openNote(noteId: String, inTrash: Boolean) {
         selectedId = noteId
         val note = service.getNote(NoteId(noteId))
         titleField.text = note.title
         contentArea.text = note.content
         LBlastchange.text = note.updatedAt.toString()
-        LBsaved.text = if (APtrashcan.isVisible) "Papierkorb" else "Nicht gespeichert"
-    }
-
-    private fun clearEditor() {
-        selectedId = null
-        titleField.text = ""
-        contentArea.text = ""
-        LBlastchange.text = "--"
-        LBsaved.text = "Nicht gespeichert"
+        LBsaved.text = if (inTrash) "Papierkorb" else "Nicht gespeichert"
     }
 
     private fun onNew() {
-        if (APtrashcan.isVisible) return
-        clearEditor()
+        if (!APnotebooks.isVisible) return
+        clearEditorAndSelections()
         titleField.requestFocus()
     }
 
     private fun onSave() {
-        if (APtrashcan.isVisible) return
+        if (!APnotebooks.isVisible) return
 
         val title = titleField.text ?: ""
         val content = contentArea.text ?: ""
@@ -278,10 +295,10 @@ class MainController {
         if (!APtrashcan.isVisible) return
         val id = selectedId ?: return
         service.restore(NoteId(id))
-        clearEditor()
+
+        clearEditorAndSelections()
         refreshTrashList()
         refreshNotebookList()
-        LVtrashcan.selectionModel.clearSelection()
     }
 
     private fun onPurgeSelectedTrash() {
@@ -298,17 +315,16 @@ class MainController {
         val result = confirm.showAndWait()
         if (result.isPresent && result.get() == ButtonType.OK) {
             service.purgeNotePermanently(NoteId(id))
-            clearEditor()
+            clearEditorAndSelections()
             refreshTrashList()
-            LVtrashcan.selectionModel.clearSelection()
         }
     }
 
-    // ----- Revisionen -----
-    // In eurer neuen FXML gibt es keinen Revisionen-Button -> wir hängen es an ein Kontextmenü der Notizenliste.
-    // Wenn ihr später einen Button einbaut, ruft einfach openRevisionsForCurrentNote() auf.
+    // ----- (Optional) Revisionen: aktuell kein Button in neuer FXML -----
+    // Falls ihr später einen Button ergänzt, ruft einfach openRevisionsForCurrentNote() auf.
+    @Suppress("unused")
     private fun openRevisionsForCurrentNote() {
-        if (APtrashcan.isVisible) return
+        if (!APnotebooks.isVisible) return
         val id = selectedId ?: return
         val stage = LVnotebook.scene.window as Stage
         openRevisionsDialog(stage, NoteId(id)) {
