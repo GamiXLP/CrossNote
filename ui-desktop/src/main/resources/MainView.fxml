@@ -27,7 +27,7 @@
          </ImageView>
             <Label styleClass="app-title" text="CrossNote" HBox.hgrow="ALWAYS" />
             <Region HBox.hgrow="ALWAYS" />
-         <Button fx:id="BTNdarkmode" mnemonicParsing="false" onMouseClicked="#dasdakj" styleClass="primary-button" text="Dark Mode" />
+         <Button fx:id="BTNdarkmode" onAction="#darkmode_on" styleClass="primary-button" text="Dark Mode"/>
         </HBox>
     </top>
 

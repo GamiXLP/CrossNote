@@ -84,3 +84,57 @@
     -fx-font-size: 14px;
     -fx-control-inner-background: #fafafa;
 }
+
+/* ===================== */
+/* DARK MODE             */
+/* ===================== */
+
+.root.dark {
+    -fx-background-color: #1e1e1e;
+}
+
+/* Top Bar */
+.root.dark .top-bar {
+    -fx-background-color: #2b2b2b;
+    -fx-border-color: #3c3c3c;
+}
+
+/* Sidebar */
+.root.dark .sidebar {
+    -fx-background-color: #2b2b2b;
+    -fx-border-color: #3c3c3c;
+}
+
+/* Labels / Text */
+.root.dark .label {
+    -fx-text-fill: #e0e0e0;
+}
+
+/* TextFields */
+.root.dark .text-field {
+    -fx-background-color: #3a3a3a;
+    -fx-text-fill: white;
+    -fx-prompt-text-fill: #bbbbbb;
+}
+
+/* TextArea */
+.root.dark .text-area {
+    -fx-control-inner-background: #3a3a3a;
+    -fx-text-fill: white;
+}
+
+/* Buttons */
+.root.dark .primary-button {
+    -fx-background-color: #5a7cff;
+    -fx-text-fill: white;
+}
+
+.root.dark .primary-button:hover {
+    -fx-background-color: #6a8cff;
+}
+
+/* ListViews */
+.root.dark .list-view {
+    -fx-control-inner-background: #2b2b2b;
+    -fx-background-color: #2b2b2b;
+}

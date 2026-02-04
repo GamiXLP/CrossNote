@@ -215,20 +215,20 @@ class MainController {
         setCenterMode()
     }
 
-    // ----- Dark Mode (FXML onMouseClicked="#dasdakj") -----
     @FXML
-    fun dasdakj(event: MouseEvent) {
-        val root = (event.source as? Node)?.scene?.root ?: return
+    fun darkmode_on() {
+        val root = BTNdarkmode.scene.root
         darkMode = !darkMode
 
         if (darkMode) {
-            if (!root.styleClass.contains("dark")) root.styleClass.add("dark")
+            root.styleClass.add("dark")
             BTNdarkmode.text = "Light Mode"
         } else {
             root.styleClass.remove("dark")
             BTNdarkmode.text = "Dark Mode"
         }
     }
+
 
     // ----- Left Pane Switch -----
     private fun showLeftPane(which: AnchorPane) {
