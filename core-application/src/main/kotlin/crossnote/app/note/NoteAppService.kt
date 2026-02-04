@@ -138,4 +138,7 @@ class NoteAppService(
             repo.deleteById(note.id)
         }
     }
+
+    fun getRevision(id: RevisionId): Revision =
+        revisionRepo.findById(id) ?: error("Revision not found: ${id.value}")
 }
