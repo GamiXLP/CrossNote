@@ -141,4 +141,7 @@ class NoteAppService(
 
     fun getRevision(id: RevisionId): Revision =
         revisionRepo.findById(id) ?: error("Revision not found: ${id.value}")
+
+    fun clockNowForUi() = clock.now()
+
 }
