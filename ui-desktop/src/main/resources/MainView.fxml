@@ -1,42 +1,121 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.geometry.Insets?>
-<?import javafx.scene.control.*?>
-<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.AnchorPane?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
 
-<BorderPane xmlns="http://javafx.com/javafx"
-            xmlns:fx="http://javafx.com/fxml"
-            fx:controller="crossnote.desktop.MainController">
+<BorderPane styleClass="root" stylesheets="@styles.css" xmlns="http://javafx.com/javafx/24.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="crossnote.desktop.MainController">
 
+    <!-- TOP BAR -->
+    <top>
+        <HBox spacing="12" styleClass="top-bar">
+         <ImageView fitHeight="30.0" fitWidth="30.0" pickOnBounds="true" preserveRatio="true" HBox.hgrow="ALWAYS">
+            <image>
+               <Image url="@images/CrossNote_Icon.png" />
+            </image>
+         </ImageView>
+            <Label styleClass="app-title" text="CrossNote" HBox.hgrow="ALWAYS" />
+            <Region HBox.hgrow="ALWAYS" />
+         <Button fx:id="BTNdarkmode" mnemonicParsing="false" onMouseClicked="#dasdakj" styleClass="primary-button" text="Dark Mode" />
+        </HBox>
+    </top>
+
+    <!-- LEFT SIDEBAR -->
     <left>
-        <ListView fx:id="notesList" prefWidth="260.0"/>
+        <VBox minWidth="400.0" spacing="10" styleClass="sidebar">
+         <StackPane maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" VBox.vgrow="ALWAYS">
+            <children>
+               <AnchorPane fx:id="APnotebooks" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" visible="false">
+                  <children>
+                     <VBox maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
+                        <children>
+                           <Label maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" styleClass="section-title" text="📔 Notizbücher/Notizen" VBox.vgrow="NEVER" />
+                           <TextField fx:id="TFnotebook" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" promptText="Suchen…" styleClass="search-field" VBox.vgrow="NEVER" />
+                           <ListView fx:id="LVnotebook" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" minHeight="0.0" styleClass="sidebar-list" VBox.vgrow="ALWAYS" />
+                        </children>
+                     </VBox>
+                  </children>
+               </AnchorPane>
+               <AnchorPane fx:id="APtrashcan" visible="false">
+                  <children>
+                     <VBox maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
+                        <children>
+                           <HBox>
+                              <children>
+                                 <Label styleClass="section-title" text="🗑 Papierkorb" />
+                                 <Region HBox.hgrow="ALWAYS" />
+                                 <Button fx:id="BTNrestore" mnemonicParsing="false" styleClass="primary-button" text="↺ Wiederherstellen" />
+                              </children>
+                           </HBox>
+                           <TextField fx:id="TFtrashcan" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" promptText="Suchen…" styleClass="search-field" VBox.vgrow="NEVER" />
+                           <ListView fx:id="LVtrashcan" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" minHeight="0.0" styleClass="sidebar-list" VBox.vgrow="ALWAYS" />
+                        </children>
+                     </VBox>
+                  </children>
+               </AnchorPane>
+               <AnchorPane fx:id="APsavestate">
+                  <children>
+                     <VBox maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
+                        <children>
+                           <HBox VBox.vgrow="NEVER">
+                              <children>
+                                 <Label styleClass="section-title" text="📋 Speicherstände: " />
+                                 <Label fx:id="LBdataname" styleClass="section-title" text="Dateiname" HBox.hgrow="ALWAYS" />
+                                 <Region HBox.hgrow="ALWAYS" />
+                                 <Button fx:id="BTNload" mnemonicParsing="false" styleClass="primary-button" text="Laden" />
+                              </children>
+                           </HBox>
+                           <ListView fx:id="LVsavestate" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" styleClass="sidebar-list" VBox.vgrow="ALWAYS" />
+                        </children>
+                     </VBox>
+                  </children>
+               </AnchorPane>
+            </children>
+         </StackPane>
+
+            <Separator />
+         <HBox alignment="CENTER">
+            <children>
+               <Button fx:id="BTNtrashcan" prefWidth="102.4" styleClass="primary-button" text="🗑 Papierkorb" />
+               <Region HBox.hgrow="ALWAYS" />
+               <Button fx:id="BTNsavestate" styleClass="primary-button" text="📋 Speicherstände" />
+            </children>
+         </HBox>
+        </VBox>
     </left>
 
+    <!-- CENTER: NOTE LIST -->
     <center>
-        <VBox spacing="10.0">
-            <padding>
-                <Insets top="12" right="12" bottom="12" left="12"/>
-            </padding>
-
-            <CheckBox fx:id="trashToggle" text="Papierkorb anzeigen"/>
-
-            <TextField fx:id="titleField" promptText="Titel"/>
-
-            <TextArea fx:id="contentArea"
-                      promptText="Inhalt"
-                      wrapText="true"
-                      VBox.vgrow="ALWAYS"/>
-
-            <HBox spacing="10.0">
-                <Button fx:id="newButton" text="Neu"/>
-                <Button fx:id="saveButton" text="Speichern"/>
-                <Button fx:id="trashButton" text="In Papierkorb"/>
-                <Button fx:id="restoreButton" text="Wiederherstellen"/>
-                <Button fx:id="purgeButton" text="Endgültig löschen"/>
-                <Button fx:id="revisionsButton" text="Revisionen"/>
+        <VBox spacing="8.0" styleClass="note-list-container">
+         <children>
+            <HBox alignment="CENTER_LEFT" spacing="10.0">
+               <children>
+                     <TextField fx:id="titleField" promptText="Titel der Notiz" styleClass="note-title" HBox.hgrow="ALWAYS" />
+                      <Button fx:id="BTNsave" styleClass="primary-button" text="Speichern" HBox.hgrow="NEVER" />
+                  <Button fx:id="BTNnewnote" styleClass="primary-button" text="＋ Neue Notiz" HBox.hgrow="NEVER" />
+               </children>
             </HBox>
-
-            <Label fx:id="statusLabel" text="Bereit"/>
+   
+                  <TextArea fx:id="contentArea" promptText="Schreibe deine Notiz hier…" styleClass="note-content" VBox.vgrow="ALWAYS" />
+   
+                  <HBox spacing="10">
+                   <Label text="Zuletzt geändert: " HBox.hgrow="NEVER" />
+               <Label fx:id="LBlastchange" text="--" HBox.hgrow="ALWAYS" />
+                   <Region HBox.hgrow="ALWAYS" />
+               <Label fx:id="LBsaved" prefWidth="100.0" text="Nicht gespeichert" HBox.hgrow="NEVER" />
+               </HBox>
+         </children>
         </VBox>
     </center>
 
