@@ -10,9 +10,7 @@ import crossnote.domain.settings.setBoolean
 import javafx.collections.FXCollections
 import javafx.collections.transformation.FilteredList
 import javafx.fxml.FXML
-import javafx.scene.Node
 import javafx.scene.control.*
-import javafx.scene.input.MouseEvent
 import javafx.scene.layout.AnchorPane
 import javafx.scene.layout.Priority
 import javafx.scene.layout.VBox
@@ -21,15 +19,11 @@ import javafx.stage.Modality
 import javafx.stage.Stage
 import javafx.event.ActionEvent
 import java.nio.file.Paths
+import java.time.Duration
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
-/**
- * MainController passend zu eurer neuen MainView.fxml
- * - Notizen (links) + Suche
- * - Papierkorb (links) + Suche + Wiederherstellen + Endgültig löschen (Context Menü)
- * - Speicherstände (links): zeigt Revisionen der zuletzt geöffneten Notiz
- * - Toggle-Navigation: Papierkorb/Speicherstände erneut klicken -> zurück zur Notizen-Ansicht
- * - Dark Mode Toggle (FXML: onMouseClicked="#dasdakj")
- */
 class MainController {
 
     // ---------- Persistence / Service ----------
@@ -72,6 +66,7 @@ class MainController {
     @FXML lateinit var titleField: TextField
     @FXML lateinit var contentArea: TextArea
     @FXML lateinit var BTNsave: Button
+    @FXML lateinit var BTNdelete: Button
     @FXML lateinit var BTNnewnote: Button
     @FXML lateinit var LBlastchange: Label
     @FXML lateinit var LBsaved: Label
@@ -85,7 +80,7 @@ class MainController {
     private lateinit var trashFiltered: FilteredList<Pair<String, String>>
 
     private var selectedId: String? = null
-    private var lastActiveNoteId: String? = null   // <- wichtig für Revisionen/Speicherstände
+    private var lastActiveNoteId: String? = null
     private var darkMode: Boolean = false
 
     @FXML
@@ -120,7 +115,7 @@ class MainController {
             }
         }
 
-        // Savestates (Revisionen) CellFactory: zeige Datum/Uhrzeit
+        // Savestates list
         LVsavestate.items = savestateItems
         LVsavestate.setCellFactory {
             object : ListCell<Pair<String, String>>() {
@@ -182,6 +177,9 @@ class MainController {
         BTNsave.setOnAction { onSave() }
         BTNnewnote.setOnAction { onNew() }
 
+        // ✅ Löschen-Button (neu)
+        BTNdelete.setOnAction { onDelete() }
+
         // Papierkorb Kontextmenü: Endgültig löschen
         LVtrashcan.contextMenu = ContextMenu().apply {
             val purgeItem = MenuItem("Endgültig löschen").apply {
@@ -190,24 +188,17 @@ class MainController {
             items.add(purgeItem)
         }
 
+        // Speicherstände: Auswahl -> Preview rechts
         LVsavestate.selectionModel.selectedItemProperty().addListener { _, _, new ->
             if (new != null) {
-                // new = (revisionId, createdAtIso)
                 LBdataname.text = new.second
-
-                // Revision laden und rechts anzeigen (Preview)
                 val rev = service.getRevision(RevisionId(new.first))
-
                 titleField.text = rev.title
                 contentArea.text = rev.content
-
-                // Optional: Status/Datum passend setzen
                 LBsaved.text = "Vorschau (Revision)"
                 LBlastchange.text = rev.createdAt.toString()
             }
         }
-
-        // Speicherstände: Laden = Revision wiederherstellen
         BTNload.setOnAction { onLoadSavestateRevision() }
 
         // Initial status
@@ -215,7 +206,6 @@ class MainController {
         LBlastchange.text = "--"
         LBdataname.text = "Keine Notiz ausgewählt"
 
-        // Initial load
         refreshNotebookList()
         setCenterMode()
 
@@ -239,8 +229,6 @@ class MainController {
         settingsRepo.setBoolean("darkMode", darkMode)
     }
 
-
-    // ----- Left Pane Switch -----
     private fun showLeftPane(which: AnchorPane) {
         val panes = listOf(APnotebooks, APtrashcan, APsavestate)
         panes.forEach {
@@ -251,7 +239,6 @@ class MainController {
         which.isManaged = true
     }
 
-    // ----- Center Mode (disable save/new when trash visible OR savestate visible) -----
     private fun setCenterMode() {
         val inTrash = APtrashcan.isVisible
         val inSavestate = APsavestate.isVisible
@@ -263,6 +250,12 @@ class MainController {
         BTNload.isDisable = !inSavestate
         titleField.isEditable = !editorLocked
         contentArea.isEditable = !editorLocked
+
+        BTNdelete.text = when {
+            inTrash -> "Endgültig löschen"
+            inSavestate -> "Speicherstand löschen"
+            else -> "Löschen"
+        }
     }
 
     private fun clearEditorAndSelections() {
@@ -277,7 +270,6 @@ class MainController {
         LVsavestate.selectionModel.clearSelection()
     }
 
-    // ----- Data refresh -----
     private fun refreshNotebookList() {
         val summaries = service.listActiveNotes()
         notebookItems.setAll(summaries.map { it.id to it.title })
@@ -288,9 +280,6 @@ class MainController {
         trashItems.setAll(summaries.map { it.id to it.title })
     }
 
-    /**
-     * Speicherstände = Revisionen der zuletzt geöffneten Notiz.
-     */
     private fun refreshSavestates() {
         val noteId = lastActiveNoteId
         if (noteId == null) {
@@ -299,28 +288,39 @@ class MainController {
             return
         }
 
-        val revisions = service.listRevisions(NoteId(noteId))
-        savestateItems.setAll(revisions.map { it.id to it.createdAtIso })
+        val revisions = service.listRevisions(NoteId(noteId)) // neueste zuerst (bei euch im Service)
+        val formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss")
+            .withZone(ZoneId.systemDefault())
 
-        LBdataname.text = if (revisions.isEmpty()) {
-            "Keine Revisionen vorhanden"
-        } else {
-            "Revisionen für Notiz: $noteId"
+        // Version 1 = neueste
+        val pretty = revisions.mapIndexed { index, r ->
+            val instant = runCatching { Instant.parse(r.createdAtIso) }.getOrNull()
+            val dateText = if (instant != null) formatter.format(instant) else r.createdAtIso
+            val version = index + 1
+            r.id to "$dateText  –  Version $version"
         }
+
+        savestateItems.setAll(pretty)
+
+        LBdataname.text =
+            if (revisions.isEmpty()) "Keine Speicherstände vorhanden"
+            else "Revisionen für Notiz: $noteId"
     }
 
-    // ----- Open / New / Save -----
     private fun openNote(noteId: String, inTrash: Boolean) {
         selectedId = noteId
-
-        // Nur aktive Notizen setzen wir als "letzte aktive Note" für Revisionen
         if (!inTrash) lastActiveNoteId = noteId
 
         val note = service.getNote(NoteId(noteId))
         titleField.text = note.title
         contentArea.text = note.content
         LBlastchange.text = note.updatedAt.toString()
-        LBsaved.text = if (inTrash) "Papierkorb" else "Nicht gespeichert"
+
+        if (inTrash) {
+            LBsaved.text = trashCountdownText(noteId)
+        } else {
+            LBsaved.text = "Nicht gespeichert"
+        }
     }
 
     private fun onNew() {
@@ -354,7 +354,46 @@ class MainController {
         selectInList(LVnotebook, selectedId!!)
     }
 
-    // ----- Trash actions -----
+    /**
+     * ✅ Neuer Delete-Handler:
+     * - Notizenansicht: moveToTrash
+     * - Papierkorb: purge (endgültig)
+     */
+    private fun onDelete() {
+        val inTrash = APtrashcan.isVisible
+        val inNotes = APnotebooks.isVisible
+        val inSavestate = APsavestate.isVisible
+
+        when {
+            inSavestate -> {
+                deleteSelectedSavestate()
+            }
+
+            inTrash -> {
+                val id = selectedId ?: return
+                val confirm = Alert(Alert.AlertType.CONFIRMATION).apply {
+                    title = "Endgültig löschen"
+                    headerText = "Notiz endgültig löschen?"
+                    contentText = "Diese Notiz wird dauerhaft entfernt und kann nicht wiederhergestellt werden."
+                    buttonTypes.setAll(ButtonType.CANCEL, ButtonType.OK)
+                }
+                val result = confirm.showAndWait()
+                if (result.isPresent && result.get() == ButtonType.OK) {
+                    service.purgeNotePermanently(NoteId(id))
+                    clearEditorAndSelections()
+                    refreshTrashList()
+                }
+            }
+
+            inNotes -> {
+                val id = selectedId ?: return
+                service.moveToTrash(NoteId(id))
+                clearEditorAndSelections()
+                refreshNotebookList()
+            }
+        }
+    }
+
     private fun onRestore() {
         if (!APtrashcan.isVisible) return
         val id = selectedId ?: return
@@ -384,7 +423,6 @@ class MainController {
         }
     }
 
-    // ----- Savestates actions -----
     private fun onLoadSavestateRevision() {
         if (!APsavestate.isVisible) return
 
@@ -399,74 +437,56 @@ class MainController {
 
         service.restoreFromRevision(NoteId(noteId), revisionId)
 
-        // Danach zurück zur Notizenansicht + Note laden
         showLeftPane(APnotebooks)
         clearEditorAndSelections()
         refreshNotebookList()
         setCenterMode()
 
-        // Note öffnen, damit man direkt Ergebnis sieht
         openNote(noteId, inTrash = false)
         selectInList(LVnotebook, noteId)
-
         LBsaved.text = "Auf Revision zurückgesetzt"
     }
 
-    // ----- (Optional) Revisionen Dialog (nicht direkt in neuer FXML verknüpft) -----
-    @Suppress("unused")
-    private fun openRevisionsForCurrentNote() {
-        if (!APnotebooks.isVisible) return
-        val id = selectedId ?: return
-        val stage = LVnotebook.scene.window as Stage
-        openRevisionsDialog(stage, NoteId(id)) {
-            val refreshed = service.getNote(NoteId(id))
-            titleField.text = refreshed.title
-            contentArea.text = refreshed.content
-            refreshNotebookList()
-            LBsaved.text = "Auf Revision zurückgesetzt"
-            LBlastchange.text = refreshed.updatedAt.toString()
+    /**
+     * Countdown-Text: wie viele Tage noch im Papierkorb bis Auto-Purge (30 Tage)
+     * Anzeige nutzen wir über LBsaved.
+     */
+    private fun trashCountdownText(noteId: String): String {
+        val note = service.getNote(NoteId(noteId))
+        val trashedAt = note.trashedAt ?: return "Papierkorb"
+        val now = service.clockNowForUi()
+
+        val elapsedDays = Duration.between(trashedAt, now).toDays()
+        val remaining = 30 - elapsedDays
+
+        return when {
+            remaining <= 0L -> "Papierkorb: wird heute gelöscht"
+            remaining == 1L -> "Papierkorb: 1 Tag übrig"
+            else -> "Papierkorb: $remaining Tage übrig"
         }
     }
 
-    private fun openRevisionsDialog(owner: Stage, noteId: NoteId, onRestored: () -> Unit) {
-        val revisions = service.listRevisions(noteId)
-        val items = FXCollections.observableArrayList(revisions.map { it.id to it.createdAtIso })
-
-        val listView = ListView<Pair<String, String>>(items).apply {
-            setCellFactory {
-                object : ListCell<Pair<String, String>>() {
-                    override fun updateItem(item: Pair<String, String>?, empty: Boolean) {
-                        super.updateItem(item, empty)
-                        text = if (empty || item == null) "" else item.second
-                    }
-                }
-            }
-        }
-
-        val restoreButton = Button("Auf Revision zurücksetzen")
-        val infoLabel = Label("Wähle eine Revision aus")
-
-        restoreButton.setOnAction {
-            val selected = listView.selectionModel.selectedItem ?: return@setOnAction
-            val revId = RevisionId(selected.first)
-            service.restoreFromRevision(noteId, revId)
-            onRestored()
-            infoLabel.text = "Wiederhergestellt ✅"
-        }
-
-        val root = VBox(10.0, Label("Revisionen (neueste zuerst)"), listView, restoreButton, infoLabel).apply {
-            padding = Insets(12.0)
-            VBox.setVgrow(listView, Priority.ALWAYS)
-        }
-
-        val dialog = Stage().apply {
-            initOwner(owner)
-            initModality(Modality.WINDOW_MODAL)
-            title = "Revisionen"
-            scene = javafx.scene.Scene(root, 520.0, 520.0)
-        }
-        dialog.show()
+    private fun selectInList(list: ListView<Pair<String, String>>, id: String) {
+        val idx = list.items.indexOfFirst { it.first == id }
+        if (idx >= 0) list.selectionModel.select(idx)
     }
+
+    private fun deleteSelectedSavestate() {
+        if (!APsavestate.isVisible) return
+
+        val selected = LVsavestate.selectionModel.selectedItem ?: run {
+            LBsaved.text = "Kein Speicherstand ausgewählt"
+            return
+        }
+
+        val revId = RevisionId(selected.first)
+
+        val confirm = Alert(Alert.AlertType.CONFIRMATION).apply {
+            title = "Speicherstand löschen"
+            headerText = "Diesen Speicherstand wirklich löschen?"
+            contentText = "Der Speicherstand wird dauerhaft entfernt."
+            buttonTypes.setAll(ButtonType.CANCEL, ButtonType.OK)
+        }
 
     private fun applyTheme() {
         val root = BTNdarkmode.scene.root
@@ -486,6 +506,20 @@ class MainController {
     private fun selectInList(list: ListView<Pair<String, String>>, id: String) {
         val idx = list.items.indexOfFirst { it.first == id }
         if (idx >= 0) list.selectionModel.select(idx)
+        val result = confirm.showAndWait()
+        if (result.isEmpty || result.get() != ButtonType.OK) return
+
+        service.deleteRevision(revId)
+
+        // UI aufräumen + neu laden
+        LVsavestate.selectionModel.clearSelection()
+        savestateItems.removeIf { it.first == revId.value } // sofort sichtbar
+        refreshSavestates() // DB-Truth
+
+        titleField.text = ""
+        contentArea.text = ""
+        LBlastchange.text = "--"
+        LBsaved.text = "Speicherstand gelöscht"
     }
 
     fun close() {
