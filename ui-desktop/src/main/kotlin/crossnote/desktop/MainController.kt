@@ -285,29 +285,45 @@ class MainController {
 
     private fun buildFolderItems(
         parent: NotebookId?,
-        notebooks: List<Notebook>
+        notebooks: List<Notebook>,
+        includeAll: Boolean = false
     ): List<TreeItem<NavNode>> {
+
+        val q = notebookSearch // schon lowercase bei dir
         val children = notebooks
             .filter { it.parentId == parent }
             .sortedBy { it.name.lowercase() }
 
-        return children.map { nb ->
+        return children.mapNotNull { nb ->
+            val folderMatches = q.isNotBlank() && nb.name.lowercase().contains(q)
+            val includeHere = includeAll || folderMatches
+
             val folderItem = TreeItem<NavNode>(NavNode.NotebookBranch(nb.id, nb.name)).apply {
                 isExpanded = true
             }
 
-            // Notes in this folder (brauchst du aus service)
+            // Notes: wenn Ordner (oder ein Parent) matched -> alle Notes zeigen,
+            // sonst nach Titel filtern
             val notes = noteRepo.listNoteSummariesInNotebook(nb.id)
-                .filter { notebookSearch.isBlank() || it.title.lowercase().contains(notebookSearch) }
+                .filter { includeHere || q.isBlank() || it.title.lowercase().contains(q) }
 
             notes.forEach { n ->
                 folderItem.children.add(TreeItem(NavNode.NoteLeaf(NoteId(n.id), n.title)))
             }
 
-            // Subfolders
-            folderItem.children.addAll(buildFolderItems(nb.id, notebooks))
+            // Subfolders rekursiv (wenn includeHere=true -> ganzer Unterbaum sichtbar)
+            val subFolders = buildFolderItems(nb.id, notebooks, includeHere)
+            folderItem.children.addAll(subFolders)
 
-            folderItem
+            // Entscheiden, ob Ordner überhaupt angezeigt wird
+            val shouldShow = when {
+                q.isBlank() -> true
+                includeHere -> true                       // Ordner matched → immer zeigen + Inhalt
+                folderItem.children.isNotEmpty() -> true  // Treffer in Notes/Subfoldern
+                else -> false
+            }
+
+            if (shouldShow) folderItem else null
         }
     }
 
