@@ -14,8 +14,9 @@
 <?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.control.TreeView?>
 
-<BorderPane styleClass="root" stylesheets="@styles.css" xmlns="http://javafx.com/javafx/24.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="crossnote.desktop.MainController">
+<BorderPane styleClass="root" stylesheets="@styles.css" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="crossnote.desktop.MainController">
 
     <!-- TOP BAR -->
     <top>
@@ -42,7 +43,7 @@
                         <children>
                            <Label maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" styleClass="section-title" text="📔 Notizbücher/Notizen" VBox.vgrow="NEVER" />
                            <TextField fx:id="TFnotebook" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" promptText="Suchen…" styleClass="search-field" VBox.vgrow="NEVER" />
-                           <ListView fx:id="LVnotebook" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" minHeight="0.0" styleClass="sidebar-list" VBox.vgrow="ALWAYS" />
+                           <TreeView fx:id="TVnotebook" styleClass="sidebar-list" VBox.vgrow="ALWAYS" />
                         </children>
                      </VBox>
                   </children>
