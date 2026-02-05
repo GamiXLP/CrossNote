@@ -91,6 +91,8 @@ class MainController {
     private var expandedBeforeSearch: Set<String> = emptySet()
     private var wasSearching: Boolean = false
 
+    private var selectedNotebookId: NotebookId? = null
+
     // ---- Tree Root ----
     private val treeRoot: TreeItem<NavNode> =
         TreeItem<NavNode>(NavNode.RootHeader).apply { isExpanded = true }
@@ -142,8 +144,22 @@ class MainController {
         // Tree selection -> open note (nur wenn Note)
         TVnotebook.selectionModel.selectedItemProperty().addListener { _, _, new ->
             val node = new?.value ?: return@addListener
-            if (node is NavNode.NoteLeaf) {
-                openNote(node.noteId.value, inTrash = false)
+
+            when (node) {
+                is NavNode.NoteLeaf -> {
+                    // Note angeklickt -> Zielordner = Notebook der Note (optional), aber wir setzen es auf "aktueller Ordner"
+                    openNote(node.noteId.value, inTrash = false)
+                }
+                is NavNode.NotebookBranch -> {
+                    // ✅ Ordner angeklickt -> neue Notizen sollen da rein
+                    selectedNotebookId = node.notebookId
+                    clearEditorAndSelectionsForNewNoteOnly()
+                }
+                is NavNode.RootHeader -> {
+                    // Root angeklickt -> neue Notizen ins Root
+                    selectedNotebookId = null
+                    clearEditorAndSelectionsForNewNoteOnly()
+                }
             }
         }
 
@@ -366,6 +382,15 @@ class MainController {
         treeRoot.children.setAll(rootNotes + folderTree)
     }
 
+    private fun clearEditorAndSelectionsForNewNoteOnly() {
+        selectedId = null
+        titleField.text = ""
+        contentArea.text = ""
+        LBlastchange.text = "--"
+        LBsaved.text = "Nicht gespeichert"
+        titleField.requestFocus()
+    }
+
     private fun collectExpandedFolderIds(root: TreeItem<NavNode>): Set<String> {
         val expanded = mutableSetOf<String>()
 
@@ -416,6 +441,7 @@ class MainController {
         if (!inTrash) lastActiveNoteId = noteId
 
         val note = service.getNote(NoteId(noteId))
+        selectedNotebookId = note.notebookId
         titleField.text = note.title
         contentArea.text = note.content
         LBlastchange.text = note.updatedAt.toString()
@@ -424,7 +450,13 @@ class MainController {
 
     private fun onNew() {
         if (!APnotebooks.isVisible) return
-        clearEditorAndSelections()
+
+        // ✅ Editor leeren, aber Ordnerauswahl behalten
+        selectedId = null
+        titleField.text = ""
+        contentArea.text = ""
+        LBlastchange.text = "--"
+        LBsaved.text = "Nicht gespeichert"
         titleField.requestFocus()
     }
 
@@ -436,7 +468,7 @@ class MainController {
 
         val id = selectedId
         if (id == null) {
-            val newId = service.createNote(title, content, notebookId = null) // Root by default
+            val newId = service.createNote(title, content, notebookId = selectedNotebookId)
             selectedId = newId.value
             lastActiveNoteId = newId.value
             LBsaved.text = "Gespeichert (neu)"
