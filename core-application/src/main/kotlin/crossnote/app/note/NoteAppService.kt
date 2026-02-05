@@ -219,4 +219,22 @@ class NoteAppService(
             id = id.value,
             title = title.ifBlank { "(Ohne Titel)" }
         )
+    
+    fun createNotebook(name: String): NotebookId {
+        val trimmed = name.trim()
+        require(trimmed.isNotEmpty()) { "Notebook name must not be empty" }
+        return NotebookId(UUID.randomUUID().toString())
+    }
+
+    fun moveNoteToNotebook(noteId: NoteId, notebookId: NotebookId?) {
+        val note = repo.findById(noteId) ?: error("Note not found: ${noteId.value}")
+        if (note.isTrashed()) error("Cannot move trashed note.")
+
+        val now = clock.now()
+        val moved = note.copy(
+            notebookId = notebookId, // null = Root
+            updatedAt = now
+        )
+        repo.save(moved)
+    }
 }
