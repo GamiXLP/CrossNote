@@ -68,6 +68,10 @@
                     """.trimIndent()
                 )
 
+                if (!columnExists("notebooks", "parent_id")) {
+                    st.execute("ALTER TABLE notebooks ADD COLUMN parent_id TEXT NULL;")
+                }
+
                 st.execute("CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at);")
                 st.execute("CREATE INDEX IF NOT EXISTS idx_notes_trashed_at ON notes(trashed_at);")
                 st.execute("CREATE INDEX IF NOT EXISTS idx_revisions_note_id_created_at ON revisions(note_id, created_at);")
@@ -77,6 +81,7 @@
                     st.execute("ALTER TABLE notes ADD COLUMN notebook_id TEXT NULL;")
                 }
 
+                st.execute("CREATE INDEX IF NOT EXISTS idx_notebooks_parent_id ON notebooks(parent_id);")
                 st.execute("CREATE INDEX IF NOT EXISTS idx_notes_notebook_id ON notes(notebook_id);")
             }
         }

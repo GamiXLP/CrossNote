@@ -106,6 +106,61 @@ class SqliteNoteRepository(private val db: SqliteDatabase) : NoteRepository {
         }
     }
 
+    data class NoteSummary(val id: String, val title: String)
+
+    fun listRootNoteSummaries(): List<NoteSummary> {
+        val sql =
+            """
+            SELECT id, title
+            FROM notes
+            WHERE notebook_id IS NULL
+            AND trashed_at IS NULL
+            ORDER BY updated_at DESC;
+            """.trimIndent()
+
+        conn().prepareStatement(sql).use { ps ->
+            ps.executeQuery().use { rs ->
+                val result = mutableListOf<NoteSummary>()
+                while (rs.next()) {
+                    result.add(
+                        NoteSummary(
+                            id = rs.getString("id"),
+                            title = rs.getString("title")
+                        )
+                    )
+                }
+                return result
+            }
+        }
+    }
+
+    fun listNoteSummariesInNotebook(notebookId: NotebookId): List<NoteSummary> {
+        val sql =
+            """
+            SELECT id, title
+            FROM notes
+            WHERE notebook_id = ?
+            AND trashed_at IS NULL
+            ORDER BY updated_at DESC;
+            """.trimIndent()
+
+        conn().prepareStatement(sql).use { ps ->
+            ps.setString(1, notebookId.value)
+            ps.executeQuery().use { rs ->
+                val result = mutableListOf<NoteSummary>()
+                while (rs.next()) {
+                    result.add(
+                        NoteSummary(
+                            id = rs.getString("id"),
+                            title = rs.getString("title")
+                        )
+                    )
+                }
+                return result
+            }
+        }
+    }
+
     private fun mapNote(rs: java.sql.ResultSet): Note {
         val id = NoteId(rs.getString("id"))
 

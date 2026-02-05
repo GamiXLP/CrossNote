@@ -34,8 +34,10 @@ class MainController {
 
     private val notebookRepo = SqliteNotebookRepository(db)
 
+    private val noteRepo = SqliteNoteRepository(db)
+
     private val service = NoteAppService(
-        repo = SqliteNoteRepository(db),
+        repo = noteRepo,
         revisionRepo = SqliteRevisionRepository(db),
         ids = UuidIdGenerator(),
         clock = SystemClock()
@@ -127,6 +129,13 @@ class MainController {
         TVnotebook.root = treeRoot
         TVnotebook.setCellFactory { NotebookTreeCell() }
 
+        // Rechtsklick auf leere Fläche -> Root-Ordner anlegen
+        TVnotebook.contextMenu = ContextMenu(
+            MenuItem("➕ Neuer Ordner").apply {
+                setOnAction { createNotebookDialog(null) }
+            }
+        )
+
         // Tree selection -> open note (nur wenn Note)
         TVnotebook.selectionModel.selectedItemProperty().addListener { _, _, new ->
             val node = new?.value ?: return@addListener
@@ -205,13 +214,6 @@ class MainController {
             }
         }
 
-        // Context menu Tree: new folder
-        TVnotebook.contextMenu = ContextMenu().apply {
-            items.add(MenuItem("➕ Neuer Ordner").apply {
-                setOnAction { createNotebookDialog() }
-            })
-        }
-
         // Initial
         LBsaved.text = "Nicht gespeichert"
         LBlastchange.text = "--"
@@ -281,49 +283,56 @@ class MainController {
         LVsavestate.selectionModel.clearSelection()
     }
 
-    // ---------- Tree Build ----------
-    private fun refreshNotebookTree() {
-        // Pull data from service
-        val treeDto = service.listNotebookTree(notebookRepo)
+    private fun buildFolderItems(
+        parent: NotebookId?,
+        notebooks: List<Notebook>
+    ): List<TreeItem<NavNode>> {
+        val children = notebooks
+            .filter { it.parentId == parent }
+            .sortedBy { it.name.lowercase() }
 
-        treeRoot.children.clear()
-
-        // Root notes (oben), alphabetisch
-        val rootNotes = treeDto.rootNotes
-            .filter { notebookSearch.isBlank() || it.title.lowercase().contains(notebookSearch) }
-            .map { note ->
-                TreeItem<NavNode>(NavNode.NoteLeaf(NoteId(note.id), note.title))
-            }
-
-        // Folders after, alphabetisch
-        val folderNodes = treeDto.notebooks.mapNotNull { nb ->
-            val notes = nb.notes
-                .filter { notebookSearch.isBlank() || it.title.lowercase().contains(notebookSearch) }
-
-            // Wenn gesucht wird: Ordner ohne Treffer ausblenden
-            if (notebookSearch.isNotBlank() && notes.isEmpty() && !nb.name.lowercase().contains(notebookSearch)) {
-                return@mapNotNull null
-            }
-
-            val folderItem = TreeItem<NavNode>(NavNode.NotebookBranch(NotebookId(nb.id), nb.name)).apply {
+        return children.map { nb ->
+            val folderItem = TreeItem<NavNode>(NavNode.NotebookBranch(nb.id, nb.name)).apply {
                 isExpanded = true
             }
 
+            // Notes in this folder (brauchst du aus service)
+            val notes = noteRepo.listNoteSummariesInNotebook(nb.id)
+                .filter { notebookSearch.isBlank() || it.title.lowercase().contains(notebookSearch) }
+
             notes.forEach { n ->
-                folderItem.children.add(TreeItem<NavNode>(NavNode.NoteLeaf(NoteId(n.id), n.title)))
+                folderItem.children.add(TreeItem(NavNode.NoteLeaf(NoteId(n.id), n.title)))
             }
+
+            // Subfolders
+            folderItem.children.addAll(buildFolderItems(nb.id, notebooks))
 
             folderItem
         }
+    }
 
-        treeRoot.children.setAll(rootNotes + folderNodes)
+    // ---------- Tree Build ----------
+    private fun refreshNotebookTree() {
+        treeRoot.children.clear()
+
+        // Root notes wie bisher (aus service)
+        val rootNotes = noteRepo.listRootNoteSummaries()
+            .filter { notebookSearch.isBlank() || it.title.lowercase().contains(notebookSearch) }
+            .map { note -> TreeItem<NavNode>(NavNode.NoteLeaf(NoteId(note.id), note.title)) }
+
+        val notebooks = notebookRepo.findAll()
+
+        // Folders recursively
+        val folderTree = buildFolderItems(null, notebooks)
+
+        treeRoot.children.setAll(rootNotes + folderTree)
     }
 
     // ---------- Create Notebook ----------
-    private fun createNotebookDialog() {
+    private fun createNotebookDialog(parent: NotebookId?) {
         val dialog = TextInputDialog().apply {
             title = "Neuer Ordner"
-            headerText = "Ordner anlegen"
+            headerText = if (parent == null) "Ordner anlegen" else "Unterordner anlegen"
             contentText = "Name:"
         }
         val result = dialog.showAndWait()
@@ -333,7 +342,7 @@ class MainController {
         if (name.isEmpty()) return
 
         val id = NotebookId(UUID.randomUUID().toString())
-        notebookRepo.save(Notebook(id, name))
+        notebookRepo.save(Notebook(id, name, parentId = parent))
         refreshNotebookTree()
     }
 
@@ -515,6 +524,21 @@ class MainController {
     // ✅ Tree Cell + Drag & Drop (VS Code style)
     // =========================================================
 
+    private fun canMoveFolder(folderId: NotebookId, targetParent: NotebookId?): Boolean {
+        if (targetParent == null) return true
+        if (targetParent == folderId) return false
+
+        val all = notebookRepo.findAll()
+        val parentMap = all.associate { it.id to it.parentId }
+
+        var cur: NotebookId? = targetParent
+        while (cur != null) {
+            if (cur == folderId) return false
+            cur = parentMap[cur]
+        }
+        return true
+    }
+
     private inner class NotebookTreeCell : TreeCell<NavNode>() {
 
         override fun updateItem(item: NavNode?, empty: Boolean) {
@@ -525,61 +549,95 @@ class MainController {
         init {
             // Drag start: only notes
             setOnDragDetected { e ->
-                val node = item
-                if (node is NavNode.NoteLeaf) {
-                    val db: Dragboard = startDragAndDrop(TransferMode.MOVE)
-                    val content = ClipboardContent()
-                    content.putString(node.noteId.value)
-                    db.setContent(content)
-                    e.consume()
+                when (val node = item) {
+                    is NavNode.NoteLeaf -> {
+                        val db: Dragboard = startDragAndDrop(TransferMode.MOVE)
+                        val content = ClipboardContent()
+                        content.putString("NOTE:${node.noteId.value}")
+                        db.setContent(content)
+                        e.consume()
+                    }
+                    is NavNode.NotebookBranch -> {
+                        val db: Dragboard = startDragAndDrop(TransferMode.MOVE)
+                        val content = ClipboardContent()
+                        content.putString("FOLDER:${node.notebookId.value}")
+                        db.setContent(content)
+                        e.consume()
+                    }
+                    else -> {}
                 }
             }
 
             // Drag over: accept on folders OR on root (tree background/root cell)
-            setOnDragOver { e: DragEvent ->
-                val dragId = e.dragboard.string
-                if (dragId.isNullOrBlank()) return@setOnDragOver
+            setOnDragOver { e ->
+                val payload = e.dragboard.string
+                if (payload.isNullOrBlank()) return@setOnDragOver
 
                 val target = item
-                val accept = when (target) {
-                    is NavNode.NotebookBranch -> true
-                    is NavNode.RootHeader -> true
-                    else -> false
-                }
+                val accept = target is NavNode.NotebookBranch || target is NavNode.RootHeader
+                if (accept) e.acceptTransferModes(TransferMode.MOVE)
 
-                if (accept) {
-                    e.acceptTransferModes(TransferMode.MOVE)
-                }
                 e.consume()
             }
 
             // Drop: move note
             setOnDragDropped { e ->
-                val dragId = e.dragboard.string
-                if (dragId.isNullOrBlank()) {
+                val payload = e.dragboard.string
+                if (payload.isNullOrBlank()) {
                     e.isDropCompleted = false
                     return@setOnDragDropped
                 }
 
                 val target = item
-                val noteId = NoteId(dragId)
+                val targetParent: NotebookId? = when (target) {
+                    is NavNode.NotebookBranch -> target.notebookId
+                    is NavNode.RootHeader -> null
+                    else -> null
+                }
 
-                when (target) {
-                    is NavNode.NotebookBranch -> {
-                        service.moveNoteToNotebook(noteId, target.notebookId)
+                when {
+                    payload.startsWith("NOTE:") -> {
+                        val noteId = NoteId(payload.removePrefix("NOTE:"))
+                        service.moveNoteToNotebook(noteId, targetParent)
                         e.isDropCompleted = true
                         refreshNotebookTree()
                         openNote(noteId.value, inTrash = false)
                     }
-                    is NavNode.RootHeader -> {
-                        service.moveNoteToNotebook(noteId, null) // back to root
+
+                    payload.startsWith("FOLDER:") -> {
+                        val folderId = NotebookId(payload.removePrefix("FOLDER:"))
+
+                        if (!canMoveFolder(folderId, targetParent)) {
+                            e.isDropCompleted = false
+                            return@setOnDragDropped
+                        }
+
+                        notebookRepo.moveNotebook(folderId, targetParent)
                         e.isDropCompleted = true
                         refreshNotebookTree()
-                        openNote(noteId.value, inTrash = false)
                     }
+
                     else -> e.isDropCompleted = false
                 }
+
                 e.consume()
+            }
+
+            setOnContextMenuRequested {
+                val node = item ?: return@setOnContextMenuRequested
+                contextMenu = when (node) {
+                    is NavNode.NotebookBranch -> ContextMenu(
+                        MenuItem("➕ Neuer Unterordner").apply {
+                            setOnAction { createNotebookDialog(node.notebookId) }
+                        }
+                    )
+                    is NavNode.RootHeader -> ContextMenu(
+                        MenuItem("➕ Neuer Ordner").apply {
+                            setOnAction { createNotebookDialog(null) }
+                        }
+                    )
+                    else -> null
+                }
             }
         }
     }
