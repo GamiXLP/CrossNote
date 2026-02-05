@@ -86,13 +86,14 @@
          </StackPane>
 
             <Separator />
-         <HBox alignment="CENTER">
+        <HBox alignment="CENTER">
             <children>
-               <Button fx:id="BTNtrashcan" prefWidth="102.4" styleClass="primary-button" text="🗑 Papierkorb" />
-               <Region HBox.hgrow="ALWAYS" />
-               <Button fx:id="BTNsavestate" styleClass="primary-button" text="📋 Speicherstände" />
+                <Button fx:id="BTNtrashcan" prefWidth="102.4" styleClass="primary-button" text="🗑 Papierkorb" />
+                <Region HBox.hgrow="ALWAYS" />
+                <!-- Wird nur im Speicherstände-Tab eingeblendet -->
+                <Button fx:id="BTNsavestate" styleClass="primary-button" text="Zurück" visible="false" managed="false" />
             </children>
-         </HBox>
+        </HBox>
         </VBox>
     </left>
 
@@ -100,17 +101,15 @@
     <center>
         <VBox spacing="8.0" styleClass="note-list-container">
          <children>
-            <HBox alignment="CENTER_LEFT" spacing="10.0">
-               <children>
+             <HBox alignment="CENTER_LEFT" spacing="10.0">
+                 <children>
                      <TextField fx:id="titleField" promptText="Titel der Notiz" styleClass="note-title" HBox.hgrow="ALWAYS" />
-                      <Button fx:id="BTNsave" styleClass="primary-button" text="Speichern" HBox.hgrow="NEVER" />
-                  <Button fx:id="BTNdelete" mnemonicParsing="false" styleClass="primary-button" text="Löschen" />
-                  <Button fx:id="BTNnewnote" styleClass="primary-button" text="＋ Neue Notiz" HBox.hgrow="NEVER" />
-               </children>
-            </HBox>
-   
-                  <TextArea fx:id="contentArea" promptText="Schreibe deine Notiz hier…" styleClass="note-content" VBox.vgrow="ALWAYS" />
-   
+                     <Button fx:id="BTNsave" styleClass="primary-button" text="Speichern" HBox.hgrow="NEVER" />
+                 </children>
+             </HBox>
+
+             <TextArea fx:id="contentArea" promptText="Schreibe deine Notiz hier…" styleClass="note-content" VBox.vgrow="ALWAYS" />
+
                   <HBox spacing="10">
                    <Label text="Zuletzt geändert: " HBox.hgrow="NEVER" />
                <Label fx:id="LBlastchange" text="--" HBox.hgrow="ALWAYS" />

@@ -71,8 +71,6 @@ class MainController {
     @FXML lateinit var titleField: TextField
     @FXML lateinit var contentArea: TextArea
     @FXML lateinit var BTNsave: Button
-    @FXML lateinit var BTNdelete: Button
-    @FXML lateinit var BTNnewnote: Button
     @FXML lateinit var LBlastchange: Label
     @FXML lateinit var LBsaved: Label
 
@@ -137,6 +135,13 @@ class MainController {
                     text = if (empty || item == null) "" else item.second
                 }
             }
+        }
+
+        BTNsavestate.setOnAction {
+            showLeftPane(APnotebooks)
+            clearEditorAndSelections()
+            refreshNotebookTree()
+            setCenterMode()
         }
 
         // ---------- TreeView ----------
@@ -289,17 +294,14 @@ class MainController {
         val editorLocked = inTrash || inSavestate
 
         BTNsave.isDisable = editorLocked
-        BTNnewnote.isDisable = editorLocked
         BTNrestore.isDisable = !inTrash
         BTNload.isDisable = !inSavestate
+
         titleField.isEditable = !editorLocked
         contentArea.isEditable = !editorLocked
 
-        BTNdelete.text = when {
-            inTrash -> "Endgültig löschen"
-            inSavestate -> "Speicherstand löschen"
-            else -> "Löschen"
-        }
+        BTNsavestate.isVisible = inSavestate
+        BTNsavestate.isManaged = inSavestate
     }
 
     private fun clearEditorAndSelections() {
