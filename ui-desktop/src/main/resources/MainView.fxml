@@ -60,7 +60,7 @@
                               </children>
                            </HBox>
                            <TextField fx:id="TFtrashcan" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" promptText="Suchen…" styleClass="search-field" VBox.vgrow="NEVER" />
-                           <ListView fx:id="LVtrashcan" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" minHeight="0.0" styleClass="sidebar-list" VBox.vgrow="ALWAYS" />
+                           <TreeView fx:id="TVtrashcan" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" styleClass="sidebar-list" VBox.vgrow="ALWAYS" />
                         </children>
                      </VBox>
                   </children>

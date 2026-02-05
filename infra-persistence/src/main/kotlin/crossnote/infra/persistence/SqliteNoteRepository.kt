@@ -161,6 +161,26 @@ class SqliteNoteRepository(private val db: SqliteDatabase) : NoteRepository {
         }
     }
 
+    fun setTrashedAt(id: NoteId, trashedAt: Instant?) {
+        val sql = "UPDATE notes SET trashed_at = ? WHERE id = ?;"
+        conn().prepareStatement(sql).use { ps ->
+            if (trashedAt == null) ps.setNull(1, Types.VARCHAR) else ps.setString(1, trashedAt.toString())
+            ps.setString(2, id.value)
+            ps.executeUpdate()
+        }
+    }
+
+    fun findNotebookIdOfNote(id: NoteId): NotebookId? {
+        val sql = "SELECT notebook_id FROM notes WHERE id = ?;"
+        conn().prepareStatement(sql).use { ps ->
+            ps.setString(1, id.value)
+            ps.executeQuery().use { rs ->
+                if (!rs.next()) return null
+                return rs.getString("notebook_id")?.let { NotebookId(it) }
+            }
+        }
+    }
+
     private fun mapNote(rs: java.sql.ResultSet): Note {
         val id = NoteId(rs.getString("id"))
 
