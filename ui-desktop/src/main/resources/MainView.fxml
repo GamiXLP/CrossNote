@@ -52,13 +52,12 @@
                   <children>
                      <VBox maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
                         <children>
-                           <HBox>
-                              <children>
-                                 <Label styleClass="section-title" text="🗑 Papierkorb" />
-                                 <Region HBox.hgrow="ALWAYS" />
-                                 <Button fx:id="BTNrestore" mnemonicParsing="false" styleClass="primary-button" text="↺ Wiederherstellen" />
-                              </children>
-                           </HBox>
+                            <HBox>
+                                <children>
+                                    <Label styleClass="section-title" text="🗑 Papierkorb" />
+                                    <Region HBox.hgrow="ALWAYS" />
+                                </children>
+                            </HBox>
                            <TextField fx:id="TFtrashcan" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" promptText="Suchen…" styleClass="search-field" VBox.vgrow="NEVER" />
                            <TreeView fx:id="TVtrashcan" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" styleClass="sidebar-list" VBox.vgrow="ALWAYS" />
                         </children>
