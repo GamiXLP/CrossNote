@@ -8,7 +8,6 @@ import crossnote.domain.revision.RevisionId
 import crossnote.domain.settings.getBoolean
 import crossnote.domain.settings.setBoolean
 import crossnote.infra.persistence.*
-
 import javafx.collections.FXCollections
 import javafx.collections.transformation.FilteredList
 import javafx.event.ActionEvent
@@ -33,7 +32,6 @@ class MainController {
     private val settingsRepo = SqliteSettingsRepository(db)
 
     private val notebookRepo = SqliteNotebookRepository(db)
-
     private val noteRepo = SqliteNoteRepository(db)
 
     private val service = NoteAppService(
@@ -50,12 +48,11 @@ class MainController {
 
     // ---------- Notebooks/Notes (links) ----------
     @FXML lateinit var TFnotebook: TextField
-    @FXML lateinit var TVnotebook: TreeView<NavNode>  // ✅ TreeView statt ListView
+    @FXML lateinit var TVnotebook: TreeView<NavNode>
 
     // ---------- Trash (links) ----------
     @FXML lateinit var TFtrashcan: TextField
-    @FXML lateinit var LVtrashcan: ListView<Pair<String, String>>
-    @FXML lateinit var BTNrestore: Button
+    @FXML lateinit var TVtrashcan: TreeView<TrashNode>
 
     // ---------- Savestates (links) ----------
     @FXML lateinit var LBdataname: Label
@@ -73,16 +70,12 @@ class MainController {
     @FXML lateinit var titleField: TextField
     @FXML lateinit var contentArea: TextArea
     @FXML lateinit var BTNsave: Button
-    @FXML lateinit var BTNdelete: Button
-    @FXML lateinit var BTNnewnote: Button
     @FXML lateinit var LBlastchange: Label
     @FXML lateinit var LBsaved: Label
 
     // ---------- State ----------
-    private val trashItems = FXCollections.observableArrayList<Pair<String, String>>()
+    private val trashRoot: TreeItem<TrashNode> = TreeItem<TrashNode>(TrashNode.Root).apply { isExpanded = true }
     private val savestateItems = FXCollections.observableArrayList<Pair<String, String>>()
-
-    private lateinit var trashFiltered: FilteredList<Pair<String, String>>
 
     private var selectedId: String? = null
     private var lastActiveNoteId: String? = null
@@ -96,7 +89,7 @@ class MainController {
     // ---- Tree Root ----
     private val treeRoot: TreeItem<NavNode> =
         TreeItem<NavNode>(NavNode.RootHeader).apply { isExpanded = true }
-    
+
     // Suche: wir filtern Tree nicht super fancy, sondern rebuilden bei Eingabe
     private var notebookSearch: String = ""
 
@@ -106,17 +99,32 @@ class MainController {
 
         showLeftPane(APnotebooks)
 
-        // ---------- Trash list ----------
-        trashFiltered = FilteredList(trashItems) { true }
-        LVtrashcan.items = trashFiltered
-        LVtrashcan.setCellFactory {
-            object : ListCell<Pair<String, String>>() {
-                override fun updateItem(item: Pair<String, String>?, empty: Boolean) {
+    // ---------- Trash TreeView ----------
+    TVtrashcan.isShowRoot = false
+    TVtrashcan.root = trashRoot
+
+        TVtrashcan.setCellFactory {
+            object : TreeCell<TrashNode>() {
+                override fun updateItem(item: TrashNode?, empty: Boolean) {
                     super.updateItem(item, empty)
-                    text = if (empty || item == null) "" else item.second
+                    text = if (empty || item == null) "" else item.displayText()
+                    contextMenu = if (empty || item == null) null else buildTrashContextMenu(item)
                 }
             }
         }
+
+    // Auswahl im Trash: nur Notizen öffnen
+    TVtrashcan.selectionModel.selectedItemProperty().addListener { _, _, new ->
+        val node = new?.value ?: return@addListener
+        if (node is TrashNode.NoteLeaf) {
+            openNote(node.noteId.value, inTrash = true)
+        } else {
+            // optional: Editor leeren bei Ordner-Klick
+            clearEditorAndSelectionsForNewNoteOnly()
+            LBsaved.text = "Papierkorb"
+            LBlastchange.text = "--"
+        }
+    }
 
         // ---------- Savestates list ----------
         LVsavestate.items = savestateItems
@@ -129,34 +137,35 @@ class MainController {
             }
         }
 
+        BTNsavestate.setOnAction {
+            showLeftPane(APnotebooks)
+            clearEditorAndSelections()
+            refreshNotebookTree()
+            setCenterMode()
+        }
+
         // ---------- TreeView ----------
         TVnotebook.isShowRoot = false
         TVnotebook.root = treeRoot
         TVnotebook.setCellFactory { NotebookTreeCell() }
 
-        // Rechtsklick auf leere Fläche -> Root-Ordner anlegen
+        // ✅ Default: Rechtsklick auf leere Fläche / Root
         TVnotebook.contextMenu = ContextMenu(
-            MenuItem("➕ Neuer Ordner").apply {
-                setOnAction { createNotebookDialog(null) }
-            }
+            MenuItem("➕ Ordner erstellen").apply { setOnAction { createNotebookDialog(null) } },
+            MenuItem("＋ Notiz im Root erstellen").apply { setOnAction { startNewNote(null) } }
         )
 
-        // Tree selection -> open note (nur wenn Note)
+        // Tree selection -> open note / set target folder
         TVnotebook.selectionModel.selectedItemProperty().addListener { _, _, new ->
             val node = new?.value ?: return@addListener
 
             when (node) {
-                is NavNode.NoteLeaf -> {
-                    // Note angeklickt -> Zielordner = Notebook der Note (optional), aber wir setzen es auf "aktueller Ordner"
-                    openNote(node.noteId.value, inTrash = false)
-                }
+                is NavNode.NoteLeaf -> openNote(node.noteId.value, inTrash = false)
                 is NavNode.NotebookBranch -> {
-                    // ✅ Ordner angeklickt -> neue Notizen sollen da rein
                     selectedNotebookId = node.notebookId
                     clearEditorAndSelectionsForNewNoteOnly()
                 }
                 is NavNode.RootHeader -> {
-                    // Root angeklickt -> neue Notizen ins Root
                     selectedNotebookId = null
                     clearEditorAndSelectionsForNewNoteOnly()
                 }
@@ -168,16 +177,13 @@ class MainController {
             val newQuery = newValue.trim().lowercase()
             val nowSearching = newQuery.isNotBlank()
 
-            // Suche startet: Expanded-State merken
             if (nowSearching && !wasSearching) {
                 expandedBeforeSearch = collectExpandedFolderIds(treeRoot)
             }
 
-            // Suche endet: wir stellen nach refresh wieder her (siehe refreshNotebookTree)
             notebookSearch = newQuery
             refreshNotebookTree()
 
-            // Suche endet: Expanded-State wiederherstellen (nach rebuild!)
             if (!nowSearching && wasSearching) {
                 applyExpandedFolderIds(treeRoot, expandedBeforeSearch)
             }
@@ -185,14 +191,8 @@ class MainController {
             wasSearching = nowSearching
         }
 
-        TFtrashcan.textProperty().addListener { _, _, newValue ->
-            val q = newValue.trim().lowercase()
-            trashFiltered.setPredicate { it.second.lowercase().contains(q) }
-        }
-
-        // Trash selection -> open note
-        LVtrashcan.selectionModel.selectedItemProperty().addListener { _, _, new ->
-            if (new != null) openNote(new.first, inTrash = true)
+        TFtrashcan.textProperty().addListener { _, _, _ ->
+            refreshTrashTree()
         }
 
         // Toggle Trash
@@ -204,13 +204,13 @@ class MainController {
             } else {
                 showLeftPane(APtrashcan)
                 clearEditorAndSelections()
-                refreshTrashList()
+                refreshTrashTree()
             }
             setCenterMode()
         }
 
-        // Toggle Savestates
-        BTNsavestate.setOnAction {
+        // Toggle Savestates (optional: aktuell deaktiviert)
+        /* BTNsavestate.setOnAction {
             if (APsavestate.isVisible) {
                 showLeftPane(APnotebooks)
                 clearEditorAndSelections()
@@ -221,13 +221,12 @@ class MainController {
                 refreshSavestates()
             }
             setCenterMode()
-        }
+        } */
 
         // Actions
-        BTNrestore.setOnAction { onRestore() }
         BTNsave.setOnAction { onSave() }
-        BTNnewnote.setOnAction { onNew() }
-        BTNdelete.setOnAction { onDelete() }
+        // BTNnewnote.setOnAction { onNew() }
+        // BTNdelete.setOnAction { onDelete() }
 
         // Savestate preview right
         LVsavestate.selectionModel.selectedItemProperty().addListener { _, _, new ->
@@ -267,6 +266,41 @@ class MainController {
         settingsRepo.setBoolean("darkMode", darkMode)
     }
 
+    private fun buildTrashContextMenu(node: TrashNode): ContextMenu {
+        return when (node) {
+            is TrashNode.NoteLeaf -> ContextMenu(
+                MenuItem("↺ Wiederherstellen").apply {
+                    setOnAction {
+                        restoreTrashedNote(node.noteId.value)
+                        clearEditorAndSelections()
+                        refreshTrashTree()
+                        refreshNotebookTree()
+                    }
+                },
+                MenuItem("🗑 Endgültig löschen").apply {
+                    setOnAction {
+                        purgeTrashedNote(node.noteId)
+                    }
+                }
+            )
+
+            is TrashNode.FolderBranch -> ContextMenu(
+                MenuItem("↺ Wiederherstellen (inkl. Inhalt)").apply {
+                    setOnAction {
+                        restoreNotebookRecursively(node.notebookId)
+                    }
+                },
+                MenuItem("🗑 Endgültig löschen (inkl. Inhalt)").apply {
+                    setOnAction {
+                        purgeTrashedNotebookRecursively(node.notebookId)
+                    }
+                }
+            )
+
+            else -> ContextMenu() // Root etc.
+        }
+    }
+
     private fun applyTheme() {
         val root = BTNdarkmode.scene.root
         if (darkMode) {
@@ -294,17 +328,13 @@ class MainController {
         val editorLocked = inTrash || inSavestate
 
         BTNsave.isDisable = editorLocked
-        BTNnewnote.isDisable = editorLocked
-        BTNrestore.isDisable = !inTrash
         BTNload.isDisable = !inSavestate
+
         titleField.isEditable = !editorLocked
         contentArea.isEditable = !editorLocked
 
-        BTNdelete.text = when {
-            inTrash -> "Endgültig löschen"
-            inSavestate -> "Speicherstand löschen"
-            else -> "Löschen"
-        }
+        BTNsavestate.isVisible = inSavestate
+        BTNsavestate.isManaged = inSavestate
     }
 
     private fun clearEditorAndSelections() {
@@ -315,10 +345,162 @@ class MainController {
         LBsaved.text = "Nicht gespeichert"
 
         TVnotebook.selectionModel.clearSelection()
-        LVtrashcan.selectionModel.clearSelection()
+        TVtrashcan.selectionModel.clearSelection()
         LVsavestate.selectionModel.clearSelection()
     }
 
+    private fun clearEditorAndSelectionsForNewNoteOnly() {
+        selectedId = null
+        titleField.text = ""
+        contentArea.text = ""
+        LBlastchange.text = "--"
+        LBsaved.text = "Nicht gespeichert"
+        titleField.requestFocus()
+    }
+
+    // ---------- Context Actions ----------
+    private fun startNewNote(targetNotebookId: NotebookId?) {
+        if (!APnotebooks.isVisible) showLeftPane(APnotebooks)
+
+        selectedNotebookId = targetNotebookId
+        selectedId = null
+
+        titleField.text = ""
+        contentArea.text = ""
+        LBlastchange.text = "--"
+        LBsaved.text = "Nicht gespeichert"
+        titleField.requestFocus()
+
+        setCenterMode()
+    }
+
+    private fun deleteNoteFromNotebooks(noteId: NoteId) {
+        service.moveToTrash(noteId)
+        clearEditorAndSelections()
+        refreshNotebookTree()
+    }
+
+    private fun openSavestatesFor(noteId: NoteId) {
+        lastActiveNoteId = noteId.value
+        showLeftPane(APsavestate)
+        clearEditorAndSelections()
+        refreshSavestates()
+        setCenterMode()
+    }
+
+    /**
+     * ✅ Ordner löschen = Ordner + Unterordner + Notizen in den Papierkorb verschieben.
+     * Voraussetzung: SqliteNotebookRepository hat moveToTrash(...) und findAllIncludingTrashed().
+     */
+    private fun trashNotebookRecursively(notebookId: NotebookId) {
+        // Alle Ordner inkl. bereits getrashter laden, damit wir die Baumstruktur sicher haben
+        val all = notebookRepo.findAllIncludingTrashed()
+        val byParent = all.groupBy { it.parentId }
+
+        // Subtree einsammeln (root + alle Kinder)
+        fun collectSubtree(root: NotebookId): List<NotebookId> {
+            val result = mutableListOf<NotebookId>()
+            fun dfs(id: NotebookId) {
+                result.add(id)
+                byParent[id].orEmpty().forEach { child -> dfs(child.id) }
+            }
+            dfs(root)
+            return result
+        }
+
+        val idsToTrash: List<NotebookId> = collectSubtree(notebookId)
+
+        // ✅ "now" gibt es jetzt wirklich
+        val now: Instant = Instant.now()
+
+        // 1) Notizen in den Papierkorb (notebook_id bleibt erhalten!)
+        idsToTrash.forEach { nbId: NotebookId ->
+            val notes = noteRepo.listNoteSummariesInNotebook(nbId)
+            notes.forEach { n ->
+                service.moveToTrash(NoteId(n.id))
+            }
+        }
+
+        // 2) Ordner selbst (und Unterordner) in den Papierkorb
+        idsToTrash.forEach { nbId: NotebookId ->
+            notebookRepo.moveToTrash(nbId, now)
+        }
+
+        // UI refresh
+        selectedNotebookId = null
+        clearEditorAndSelections()
+        refreshNotebookTree()
+        refreshTrashTree()
+    }
+
+    /**
+     * ✅ Ordner wiederherstellen = Ordner + Unterordner + Notizen rekursiv zurückholen.
+     */
+    private fun restoreNotebookRecursively(rootId: NotebookId) {
+        // 0) Erst sicherstellen, dass die Elternkette existiert (sonst hängt der Ordner "in der Luft")
+        restoreNotebookChainIfNeeded(rootId)
+
+        // 1) Subtree aller Notebooks sammeln (inkl. trashed), damit wir Kinder finden
+        val all = notebookRepo.findAllIncludingTrashed()
+        val byParent = all.groupBy { it.parentId }
+
+        fun collectSubtree(root: NotebookId): Set<NotebookId> {
+            val result = mutableSetOf<NotebookId>()
+            fun dfs(id: NotebookId) {
+                result.add(id)
+                byParent[id].orEmpty().forEach { child -> dfs(child.id) }
+            }
+            dfs(root)
+            return result
+        }
+
+        val idsToRestore: Set<NotebookId> = collectSubtree(rootId)
+
+        // 2) Ordner/Unterordner restore (nur die, die überhaupt getrasht sind)
+        idsToRestore.forEach { nbId ->
+            if (notebookRepo.isTrashed(nbId)) {
+                notebookRepo.restoreFromTrash(nbId)
+            }
+        }
+
+        // 3) Notizen in diesen Ordnern restore
+        // listTrashedNotes() liefert nur Summaries -> wir holen Full Note um notebookId zu checken
+        val trashedNotes = service.listTrashedNotes()
+
+        trashedNotes.forEach { summary ->
+            val noteId = NoteId(summary.id)
+            val full = service.getNote(noteId)
+            val nbId = full.notebookId
+
+            if (nbId != null && idsToRestore.contains(nbId)) {
+                // Falls euer service.restore(...) notebookId resetten sollte, setzen wir danach sicherheitshalber zurück:
+                service.restore(noteId)
+                service.moveNoteToNotebook(noteId, nbId)
+            }
+        }
+
+        // UI refresh
+        clearEditorAndSelections()
+        refreshTrashTree()
+        refreshNotebookTree()
+    }
+
+    /**
+     * Restore soll NICHT im Root landen:
+     * - Notebook-Kette falls nötig aus Trash holen
+     * - Note nach restore zurück in ihr ursprüngliches Notebook setzen (falls euer Service notebook_id resetten sollte)
+     *
+     * Voraussetzung: notebookRepo.isTrashed / restoreFromTrash / findParentId existieren.
+     */
+    private fun restoreNotebookChainIfNeeded(nbId: NotebookId?) {
+        var cur = nbId
+        while (cur != null && notebookRepo.isTrashed(cur)) {
+            notebookRepo.restoreFromTrash(cur)
+            cur = notebookRepo.findParentId(cur)
+        }
+    }
+
+    // ---------- Tree Build ----------
     private fun buildFolderItems(
         parent: NotebookId?,
         notebooks: List<Notebook>,
@@ -337,7 +519,6 @@ class MainController {
             val searching = notebookSearch.isNotBlank()
 
             val folderItem = TreeItem<NavNode>(NavNode.NotebookBranch(nb.id, nb.name)).apply {
-                // أثناء Suche aufklappen, sonst gespeicherten Zustand
                 isExpanded = if (searching) true else expandedIds.contains(nb.id.value)
             }
 
@@ -362,12 +543,8 @@ class MainController {
         }
     }
 
-    // ---------- Tree Build ----------
     private fun refreshNotebookTree() {
         val searching = notebookSearch.isNotBlank()
-
-        // Wenn nicht gesucht wird: aktuellen Zustand nehmen
-        // Wenn gesucht wird: den Zustand VOR der Suche nehmen (damit wir nachher wiederherstellen können)
         val expandedIds = if (searching) expandedBeforeSearch else collectExpandedFolderIds(treeRoot)
 
         treeRoot.children.clear()
@@ -380,15 +557,6 @@ class MainController {
         val folderTree = buildFolderItems(null, notebooks, expandedIds)
 
         treeRoot.children.setAll(rootNotes + folderTree)
-    }
-
-    private fun clearEditorAndSelectionsForNewNoteOnly() {
-        selectedId = null
-        titleField.text = ""
-        contentArea.text = ""
-        LBlastchange.text = "--"
-        LBsaved.text = "Nicht gespeichert"
-        titleField.requestFocus()
     }
 
     private fun collectExpandedFolderIds(root: TreeItem<NavNode>): Set<String> {
@@ -435,29 +603,18 @@ class MainController {
         refreshNotebookTree()
     }
 
-    // ---------- Open / New / Save ----------
+    // ---------- Open / Save ----------
     private fun openNote(noteId: String, inTrash: Boolean) {
         selectedId = noteId
         if (!inTrash) lastActiveNoteId = noteId
 
         val note = service.getNote(NoteId(noteId))
         selectedNotebookId = note.notebookId
+
         titleField.text = note.title
         contentArea.text = note.content
         LBlastchange.text = note.updatedAt.toString()
         LBsaved.text = if (inTrash) trashCountdownText(noteId) else "Nicht gespeichert"
-    }
-
-    private fun onNew() {
-        if (!APnotebooks.isVisible) return
-
-        // ✅ Editor leeren, aber Ordnerauswahl behalten
-        selectedId = null
-        titleField.text = ""
-        contentArea.text = ""
-        LBlastchange.text = "--"
-        LBsaved.text = "Nicht gespeichert"
-        titleField.requestFocus()
     }
 
     private fun onSave() {
@@ -484,20 +641,90 @@ class MainController {
         refreshNotebookTree()
     }
 
-    // ---------- Delete / Trash ----------
-    private fun onDelete() {
-        when {
-            APsavestate.isVisible -> deleteSelectedSavestate()
-            APtrashcan.isVisible -> purgeCurrentTrashNote()
-            APnotebooks.isVisible -> moveCurrentNoteToTrash()
-        }
+    // ---------- Trash ----------
+    private fun restoreTrashedNote(id: String) {
+        val noteId = NoteId(id)
+        val before = service.getNote(noteId)
+        val originalNotebookId = before.notebookId
+
+        restoreNotebookChainIfNeeded(originalNotebookId)
+        service.restore(noteId)
+        service.moveNoteToNotebook(noteId, originalNotebookId)
     }
 
-    private fun moveCurrentNoteToTrash() {
-        val id = selectedId ?: return
-        service.moveToTrash(NoteId(id))
-        clearEditorAndSelections()
-        refreshNotebookTree()
+    private fun restoreTrashedNotebook(id: NotebookId) {
+        // Ordner selbst + Elternkette zurückholen, damit er wieder an alter Stelle auftaucht
+        restoreNotebookChainIfNeeded(id)
+        notebookRepo.restoreFromTrash(id)
+    }
+
+    private fun refreshTrashTree() {
+        val query = TFtrashcan.text?.trim()?.lowercase().orEmpty()
+
+        trashRoot.children.clear()
+
+        val trashedNotebooks = notebookRepo.findAllTrashed()
+        val trashedIds = trashedNotebooks.map { it.id }.toSet()
+
+        // Parent nur dann verwenden, wenn er auch getrasht ist, sonst auf null "hochziehen"
+        val byParent = trashedNotebooks.groupBy { nb ->
+            val p = nb.parentId
+            if (p != null && trashedIds.contains(p)) p else null
+        }
+        // Trashed notes sammeln + NotebookId ermitteln
+        val trashedNotes = service.listTrashedNotes().map { n ->
+            val full = service.getNote(NoteId(n.id)) // holt notebookId
+            full.notebookId to (n.id to n.title)
+        }.groupBy({ it.first }, { it.second })
+
+        fun folderMatchesDeep(nbId: NotebookId): Boolean {
+            val nb = trashedNotebooks.firstOrNull { it.id == nbId } ?: return false
+            if (nb.name.lowercase().contains(query)) return true
+            val notesHere = trashedNotes[nbId].orEmpty()
+            if (notesHere.any { it.second.lowercase().contains(query) }) return true
+            val kids = byParent[nbId].orEmpty()
+            return kids.any { folderMatchesDeep(it.id) }
+        }
+
+        fun buildFolderTree(parent: NotebookId?): List<TreeItem<TrashNode>> {
+            val children = byParent[parent].orEmpty().sortedBy { it.name.lowercase() }
+
+            return children.mapNotNull { nb ->
+                // wenn gesucht wird: nur anzeigen, wenn Ordner/Notiz irgendwo matcht
+                if (query.isNotBlank() && !folderMatchesDeep(nb.id)) return@mapNotNull null
+
+                val folderItem = TreeItem<TrashNode>(TrashNode.FolderBranch(nb.id, nb.name)).apply {
+                    isExpanded = query.isNotBlank() // bei Suche automatisch aufklappen
+                }
+
+                // Notizen in diesem Ordner
+                trashedNotes[nb.id].orEmpty()
+                    .sortedBy { it.second.lowercase() }
+                    .filter { query.isBlank() || it.second.lowercase().contains(query) || nb.name.lowercase().contains(query) }
+                    .forEach { (noteId, title) ->
+                        folderItem.children.add(
+                            TreeItem(TrashNode.NoteLeaf(NoteId(noteId), title))
+                        )
+                    }
+
+                // Unterordner
+                folderItem.children.addAll(buildFolderTree(nb.id))
+
+                folderItem
+            }
+        }
+
+        // Root-Notizen (notebookId == null)
+        val rootNotes = trashedNotes[null].orEmpty()
+            .sortedBy { it.second.lowercase() }
+            .filter { query.isBlank() || it.second.lowercase().contains(query) }
+            .map { (noteId, title) ->
+                TreeItem<TrashNode>(TrashNode.NoteLeaf(NoteId(noteId), title))
+            }
+
+        val folderTree = buildFolderTree(null)
+
+        trashRoot.children.addAll(folderTree + rootNotes)
     }
 
     private fun purgeCurrentTrashNote() {
@@ -512,23 +739,75 @@ class MainController {
         if (result.isPresent && result.get() == ButtonType.OK) {
             service.purgeNotePermanently(NoteId(id))
             clearEditorAndSelections()
-            refreshTrashList()
+            refreshTrashTree()
         }
     }
 
-    private fun onRestore() {
-        if (!APtrashcan.isVisible) return
-        val id = selectedId ?: return
-        service.restore(NoteId(id))
+    private fun purgeTrashedNote(noteId: NoteId) {
+        val confirm = Alert(Alert.AlertType.CONFIRMATION).apply {
+            title = "Endgültig löschen"
+            headerText = "Notiz endgültig löschen?"
+            contentText = "Diese Notiz wird dauerhaft entfernt und kann nicht wiederhergestellt werden."
+            buttonTypes.setAll(ButtonType.CANCEL, ButtonType.OK)
+        }
+        val result = confirm.showAndWait()
+        if (result.isPresent && result.get() == ButtonType.OK) {
+            service.purgeNotePermanently(noteId)
+            clearEditorAndSelections()
+            refreshTrashTree()
+        }
+    }
+
+    /**
+     * ✅ Ordner endgültig löschen = Ordner + Unterordner + alle (auch getrashten) Notizen darin dauerhaft entfernen.
+     */
+    private fun purgeTrashedNotebookRecursively(rootId: NotebookId) {
+        val confirm = Alert(Alert.AlertType.CONFIRMATION).apply {
+            title = "Ordner endgültig löschen"
+            headerText = "Ordner endgültig löschen?"
+            contentText = "Der Ordner inkl. Unterordner und Notizen wird dauerhaft entfernt und kann nicht wiederhergestellt werden."
+            buttonTypes.setAll(ButtonType.CANCEL, ButtonType.OK)
+        }
+        val res = confirm.showAndWait()
+        if (res.isEmpty || res.get() != ButtonType.OK) return
+
+        // Subtree sammeln (inkl. trashed), damit wir alles löschen können
+        val all = notebookRepo.findAllIncludingTrashed()
+        val byParent = all.groupBy { it.parentId }
+
+        fun collectSubtree(root: NotebookId): List<NotebookId> {
+            val result = mutableListOf<NotebookId>()
+            fun dfs(id: NotebookId) {
+                result.add(id)
+                byParent[id].orEmpty().forEach { child -> dfs(child.id) }
+            }
+            dfs(root)
+            return result
+        }
+
+        val idsToDelete = collectSubtree(rootId).toSet()
+
+        // Notizen dauerhaft löschen, deren notebookId in idsToDelete liegt
+        val trashedNotes = service.listTrashedNotes()
+        trashedNotes.forEach { summary ->
+            val noteId = NoteId(summary.id)
+            val full = service.getNote(noteId)
+            val nbId = full.notebookId
+            if (nbId != null && idsToDelete.contains(nbId)) {
+                service.purgeNotePermanently(noteId)
+            }
+        }
+
+        // Ordner bottom-up löschen (Kinder zuerst, dann Eltern), damit FK/Constraints nicht nerven
+        idsToDelete.toList().reversed().forEach { nbId ->
+            notebookRepo.delete(nbId)
+        }
+
         clearEditorAndSelections()
-        refreshTrashList()
+        refreshTrashTree()
         refreshNotebookTree()
     }
 
-    private fun refreshTrashList() {
-        val summaries = service.listTrashedNotes()
-        trashItems.setAll(summaries.map { it.id to it.title })
-    }
 
     // ---------- Savestates ----------
     private fun refreshSavestates() {
@@ -617,7 +896,7 @@ class MainController {
     }
 
     // =========================================================
-    // ✅ Tree Cell + Drag & Drop (VS Code style)
+    // Tree Cell + Drag & Drop + Context Menus
     // =========================================================
 
     private fun canMoveFolder(folderId: NotebookId, targetParent: NotebookId?): Boolean {
@@ -640,32 +919,33 @@ class MainController {
         override fun updateItem(item: NavNode?, empty: Boolean) {
             super.updateItem(item, empty)
             text = if (empty || item == null) "" else item.displayText()
+            if (empty) contextMenu = null
         }
 
         init {
-            // Drag start: only notes
+            // Drag start: notes + folders
             setOnDragDetected { e ->
                 when (val node = item) {
                     is NavNode.NoteLeaf -> {
-                        val db: Dragboard = startDragAndDrop(TransferMode.MOVE)
+                        val dbb: Dragboard = startDragAndDrop(TransferMode.MOVE)
                         val content = ClipboardContent()
                         content.putString("NOTE:${node.noteId.value}")
-                        db.setContent(content)
+                        dbb.setContent(content)
                         e.consume()
                     }
                     is NavNode.NotebookBranch -> {
-                        val db: Dragboard = startDragAndDrop(TransferMode.MOVE)
+                        val dbb: Dragboard = startDragAndDrop(TransferMode.MOVE)
                         val content = ClipboardContent()
                         content.putString("FOLDER:${node.notebookId.value}")
-                        db.setContent(content)
+                        dbb.setContent(content)
                         e.consume()
                     }
                     else -> {}
                 }
             }
 
-            // Drag over: accept on folders OR on root (tree background/root cell)
-            setOnDragOver { e ->
+            // Drag over: accept on folders OR root
+            setOnDragOver { e: DragEvent ->
                 val payload = e.dragboard.string
                 if (payload.isNullOrBlank()) return@setOnDragOver
 
@@ -676,7 +956,7 @@ class MainController {
                 e.consume()
             }
 
-            // Drop: move note
+            // Drop: move note/folder
             setOnDragDropped { e ->
                 val payload = e.dragboard.string
                 if (payload.isNullOrBlank()) {
@@ -719,22 +999,65 @@ class MainController {
                 e.consume()
             }
 
-            setOnContextMenuRequested {
+            // Right-click menus
+            setOnContextMenuRequested { e ->
                 val node = item ?: return@setOnContextMenuRequested
+                treeView?.selectionModel?.select(index)
                 contextMenu = when (node) {
+                    is NavNode.NoteLeaf -> ContextMenu(
+                        MenuItem("🗑 Notiz löschen").apply {
+                            setOnAction { deleteNoteFromNotebooks(node.noteId) }
+                        },
+                        MenuItem("📋 Speicherstände anzeigen").apply {
+                            setOnAction { openSavestatesFor(node.noteId) }
+                        }
+                    )
+
                     is NavNode.NotebookBranch -> ContextMenu(
+                        MenuItem("＋ Neue Notiz hier").apply {
+                            setOnAction { startNewNote(node.notebookId) }
+                        },
                         MenuItem("➕ Neuer Unterordner").apply {
                             setOnAction { createNotebookDialog(node.notebookId) }
+                        },
+                        SeparatorMenuItem(),
+                        MenuItem("🗑 Ordner löschen (Papierkorb)").apply {
+                            setOnAction {
+                                val confirm = Alert(Alert.AlertType.CONFIRMATION).apply {
+                                    title = "Ordner löschen"
+                                    headerText = "Ordner wirklich in den Papierkorb verschieben?"
+                                    contentText = "Der Ordner inkl. Unterordner und Notizen wird in den Papierkorb verschoben."
+                                    buttonTypes.setAll(ButtonType.CANCEL, ButtonType.OK)
+                                }
+                                val res = confirm.showAndWait()
+                                if (res.isPresent && res.get() == ButtonType.OK) {
+                                    trashNotebookRecursively(node.notebookId)
+                                }
+                            }
                         }
                     )
+
                     is NavNode.RootHeader -> ContextMenu(
-                        MenuItem("➕ Neuer Ordner").apply {
-                            setOnAction { createNotebookDialog(null) }
-                        }
+                        MenuItem("＋ Neue Notiz im Root").apply { setOnAction { startNewNote(null) } },
+                        MenuItem("➕ Neuer Ordner").apply { setOnAction { createNotebookDialog(null) } }
                     )
-                    else -> null
                 }
+
+                e.consume()
             }
+        }
+    }
+
+    sealed class TrashNode {
+        object Root : TrashNode()
+
+        data class FolderBranch(val notebookId: NotebookId, val name: String) : TrashNode()
+        data class NoteLeaf(val noteId: NoteId, val title: String) : TrashNode()
+
+        fun displayText(): String = when (this) {
+            Root -> "Papierkorb"
+            is FolderBranch -> "📁 $name"
+            is NoteLeaf -> "📝 $title"
         }
     }
 
