@@ -32,29 +32,8 @@
     -fx-border-width: 0 1 0 0;
 }
 
-.sidebar-title {
-    -fx-font-weight: bold;
-    -fx-text-fill: #555;
-}
-
 .sidebar-list {
     -fx-pref-height: 160px;
-}
-
-/* Buttons */
-.primary-button {
-    -fx-background-color: #4f7cff;
-    -fx-text-fill: white;
-    -fx-font-weight: bold;
-}
-
-.primary-button:hover {
-    -fx-background-color: #3f6be0;
-}
-
-.danger-button {
-    -fx-background-color: transparent;
-    -fx-text-fill: #c0392b;
 }
 
 /* Note List */
@@ -68,13 +47,6 @@
 }
 
 /* Editor */
-.editor-container {
-    -fx-padding: 14;
-    -fx-background-color: #ffffff;
-    -fx-border-color: #e0e0e0;
-    -fx-border-width: 0 0 0 1;
-}
-
 .note-title {
     -fx-font-size: 18px;
     -fx-font-weight: bold;
@@ -83,6 +55,28 @@
 .note-content {
     -fx-font-size: 14px;
     -fx-control-inner-background: #fafafa;
+}
+
+/* ===================== */
+/* ICON BUTTONS (NEU)    */
+/* ===================== */
+
+.icon-button {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-background-insets: 0;
+    -fx-border-insets: 0;
+    -fx-padding: 6;
+    -fx-cursor: hand;
+}
+
+.icon-button:focused {
+    -fx-focus-color: transparent;
+    -fx-faint-focus-color: transparent;
+}
+
+.icon-button:pressed {
+    -fx-opacity: 0.85;
 }
 
 /* ===================== */
@@ -121,16 +115,6 @@
 .root.dark .text-area {
     -fx-control-inner-background: #3a3a3a;
     -fx-text-fill: white;
-}
-
-/* Buttons */
-.root.dark .primary-button {
-    -fx-background-color: #5a7cff;
-    -fx-text-fill: white;
-}
-
-.root.dark .primary-button:hover {
-    -fx-background-color: #6a8cff;
 }
 
 /* ListViews */
