@@ -2,16 +2,19 @@ package crossnote.desktop
 
 import crossnote.app.note.NoteAppService
 import crossnote.domain.note.NoteId
-import crossnote.domain.settings.getBoolean
-import crossnote.domain.settings.setBoolean
+import crossnote.domain.note.NotebookId
+import crossnote.domain.note.NotebookRepository
 import crossnote.domain.revision.RevisionId
 import crossnote.infra.persistence.*
+import crossnote.domain.settings.getBoolean
+import crossnote.domain.settings.setBoolean
 import javafx.collections.FXCollections
 import javafx.collections.transformation.FilteredList
 import javafx.event.ActionEvent
 import javafx.fxml.FXML
 import javafx.scene.control.*
 import javafx.scene.layout.AnchorPane
+import javafx.scene.layout.VBox
 import java.nio.file.Paths
 import java.time.Duration
 import java.time.Instant
@@ -23,6 +26,9 @@ class MainController {
     // ---------- Persistence / Service ----------
     private val db = SqliteDatabase(Paths.get(System.getProperty("user.home"), ".crossnote", "crossnote.db"))
     private val settingsRepo = SqliteSettingsRepository(db)
+
+    private val notebookRepo: NotebookRepository = SqliteNotebookRepository(db)
+
     private val service = NoteAppService(
         repo = SqliteNoteRepository(db),
         revisionRepo = SqliteRevisionRepository(db),
@@ -37,7 +43,7 @@ class MainController {
 
     // ---------- Notebooks/Notes (links) ----------
     @FXML lateinit var TFnotebook: TextField
-    @FXML lateinit var LVnotebook: ListView<Pair<String, String>> // (id, title)
+    @FXML lateinit var LVnotebook: ListView<Pair<String, String>> // wird zur Laufzeit ersetzt
 
     // ---------- Trash (links) ----------
     @FXML lateinit var TFtrashcan: TextField
@@ -66,16 +72,29 @@ class MainController {
     @FXML lateinit var LBsaved: Label
 
     // ---------- State ----------
-    private val notebookItems = FXCollections.observableArrayList<Pair<String, String>>()
     private val trashItems = FXCollections.observableArrayList<Pair<String, String>>()
     private val savestateItems = FXCollections.observableArrayList<Pair<String, String>>() // (revId, prettyText)
 
-    private lateinit var notebookFiltered: FilteredList<Pair<String, String>>
     private lateinit var trashFiltered: FilteredList<Pair<String, String>>
 
     private var selectedId: String? = null
     private var lastActiveNoteId: String? = null
     private var darkMode: Boolean = false
+
+    // ---------- TreeView (ersetzt LVnotebook) ----------
+    private lateinit var notebookTree: TreeView<TreeNode>
+    private lateinit var notebookTreeRoot: TreeItem<TreeNode>
+
+    // Merkt, ob aktuell eine Note oder ein Ordner selektiert ist
+    private var selectedTreeNode: TreeNode? = null
+
+    // ---------------- Tree Model ----------------
+    private sealed interface TreeNode {
+        data class RootNote(val noteId: String, val title: String) : TreeNode
+        data class Folder(val notebookId: String, val name: String) : TreeNode
+        data class FolderNote(val noteId: String, val title: String, val notebookId: String) : TreeNode
+        object Workspace : TreeNode
+    }
 
     @FXML
     fun initialize() {
@@ -85,21 +104,10 @@ class MainController {
         // Default-Ansicht: Notizen
         showLeftPane(APnotebooks)
 
-        // Filterlisten
-        notebookFiltered = FilteredList(notebookItems) { true }
+        // --- Trash / Savestate Lists ---
         trashFiltered = FilteredList(trashItems) { true }
-        LVnotebook.items = notebookFiltered
         LVtrashcan.items = trashFiltered
 
-        // CellFactory: zeige Titel
-        LVnotebook.setCellFactory {
-            object : ListCell<Pair<String, String>>() {
-                override fun updateItem(item: Pair<String, String>?, empty: Boolean) {
-                    super.updateItem(item, empty)
-                    text = if (empty || item == null) "" else item.second
-                }
-            }
-        }
         LVtrashcan.setCellFactory {
             object : ListCell<Pair<String, String>>() {
                 override fun updateItem(item: Pair<String, String>?, empty: Boolean) {
@@ -109,7 +117,6 @@ class MainController {
             }
         }
 
-        // Savestates list
         LVsavestate.items = savestateItems
         LVsavestate.setCellFactory {
             object : ListCell<Pair<String, String>>() {
@@ -120,20 +127,13 @@ class MainController {
             }
         }
 
-        // Suchfelder
-        TFnotebook.textProperty().addListener { _, _, newValue ->
-            val q = newValue.trim().lowercase()
-            notebookFiltered.setPredicate { it.second.lowercase().contains(q) }
-        }
+        // Suchfeld Trash
         TFtrashcan.textProperty().addListener { _, _, newValue ->
             val q = newValue.trim().lowercase()
             trashFiltered.setPredicate { it.second.lowercase().contains(q) }
         }
 
-        // Auswahl -> Note öffnen
-        LVnotebook.selectionModel.selectedItemProperty().addListener { _, _, new ->
-            if (new != null) openNote(new.first, inTrash = false)
-        }
+        // Auswahl -> Trash Note öffnen
         LVtrashcan.selectionModel.selectedItemProperty().addListener { _, _, new ->
             if (new != null) openNote(new.first, inTrash = true)
         }
@@ -143,7 +143,7 @@ class MainController {
             if (APtrashcan.isVisible) {
                 showLeftPane(APnotebooks)
                 clearEditorAndSelections()
-                refreshNotebookList()
+                refreshNotebookTree()
             } else {
                 showLeftPane(APtrashcan)
                 clearEditorAndSelections()
@@ -157,7 +157,7 @@ class MainController {
             if (APsavestate.isVisible) {
                 showLeftPane(APnotebooks)
                 clearEditorAndSelections()
-                refreshNotebookList()
+                refreshNotebookTree()
             } else {
                 showLeftPane(APsavestate)
                 clearEditorAndSelections()
@@ -174,9 +174,7 @@ class MainController {
 
         // Papierkorb Kontextmenü: Endgültig löschen
         LVtrashcan.contextMenu = ContextMenu().apply {
-            val purgeItem = MenuItem("Endgültig löschen").apply {
-                setOnAction { onPurgeSelectedTrash() }
-            }
+            val purgeItem = MenuItem("Endgültig löschen").apply { setOnAction { onPurgeSelectedTrash() } }
             items.add(purgeItem)
         }
 
@@ -203,14 +201,25 @@ class MainController {
             }
         }
 
+        // --- TreeView bauen und anstelle ListView einhängen ---
+        setupNotebookTreeView()
+
+        // Suchfeld Notizen: filtert Tree
+        TFnotebook.textProperty().addListener { _, _, _ ->
+            refreshNotebookTree()
+        }
+
         // Initial status
         LBsaved.text = "Nicht gespeichert"
         LBlastchange.text = "--"
         LBdataname.text = "Keine Notiz ausgewählt"
 
-        refreshNotebookList()
+        // Initial load
+        refreshNotebookTree()
         setCenterMode()
     }
+
+    // ---------------- Theme ----------------
 
     @FXML
     fun darkmode_on(@Suppress("UNUSED_PARAMETER") event: ActionEvent) {
@@ -229,6 +238,8 @@ class MainController {
             BTNdarkmode.text = "Dark Mode"
         }
     }
+
+    // ---------------- Left Pane Switch ----------------
 
     private fun showLeftPane(which: AnchorPane) {
         val panes = listOf(APnotebooks, APtrashcan, APsavestate)
@@ -261,20 +272,157 @@ class MainController {
 
     private fun clearEditorAndSelections() {
         selectedId = null
+        selectedTreeNode = null
         titleField.text = ""
         contentArea.text = ""
         LBlastchange.text = "--"
         LBsaved.text = "Nicht gespeichert"
 
-        LVnotebook.selectionModel.clearSelection()
         LVtrashcan.selectionModel.clearSelection()
         LVsavestate.selectionModel.clearSelection()
+
+        if (this::notebookTree.isInitialized) {
+            notebookTree.selectionModel.clearSelection()
+        }
     }
 
-    private fun refreshNotebookList() {
-        val summaries = service.listActiveNotes()
-        notebookItems.setAll(summaries.map { it.id to it.title })
+    // ---------------- TreeView Setup/Refresh ----------------
+
+    private fun setupNotebookTreeView() {
+        notebookTreeRoot = TreeItem<TreeNode>(TreeNode.Workspace).apply { isExpanded = true }
+        notebookTree = TreeView(notebookTreeRoot).apply {
+            isShowRoot = false
+            styleClass.addAll(LVnotebook.styleClass) // reuse styles from FXML ListView if any
+        }
+
+        // CellFactory: zeigt passende Texte
+        notebookTree.setCellFactory {
+            object : TreeCell<TreeNode>() {
+                override fun updateItem(item: TreeNode?, empty: Boolean) {
+                    super.updateItem(item, empty)
+                    text = if (empty || item == null) "" else when (item) {
+                        is TreeNode.RootNote -> item.title
+                        is TreeNode.Folder -> "📁 ${item.name}"
+                        is TreeNode.FolderNote -> item.title
+                        TreeNode.Workspace -> ""
+                    }
+                }
+            }
+        }
+
+        // Selection -> Note öffnen (Folder klickt nur auf/zu)
+        notebookTree.selectionModel.selectedItemProperty().addListener { _, _, newItem ->
+            val node = newItem?.value
+            selectedTreeNode = node
+
+            when (node) {
+                is TreeNode.RootNote -> openNote(node.noteId, inTrash = false)
+                is TreeNode.FolderNote -> openNote(node.noteId, inTrash = false)
+                is TreeNode.Folder -> {
+                    // Folder: Editor leeren (optional), nur expand/collapse
+                    selectedId = null
+                    titleField.text = ""
+                    contentArea.text = ""
+                    LBlastchange.text = "--"
+                    LBsaved.text = "Ordner ausgewählt"
+                    // toggle expand
+                    newItem.isExpanded = !newItem.isExpanded
+                }
+                else -> {}
+            }
+        }
+
+        // Ersetze LVnotebook in der VBox durch TreeView
+        val parent = LVnotebook.parent
+        if (parent is VBox) {
+            val idx = parent.children.indexOf(LVnotebook)
+            if (idx >= 0) {
+                notebookTree.prefWidth = LVnotebook.prefWidth
+                notebookTree.prefHeight = LVnotebook.prefHeight
+                VBox.setVgrow(notebookTree, VBox.getVgrow(LVnotebook))
+                parent.children[idx] = notebookTree
+            } else {
+                parent.children.add(notebookTree)
+            }
+        }
     }
+
+    private fun refreshNotebookTree() {
+        // Query aus Suchfeld
+        val q = TFnotebook.text?.trim()?.lowercase().orEmpty()
+
+        val allNotes = service.listActiveNotes() // enthält nur id+title, aber keine notebookId
+        // -> Wir müssen Notes inkl notebookId aus DB holen, um root vs folder zu unterscheiden.
+        val notesFull = (SqliteNoteRepository(db)).findAll().filter { !it.isTrashed() }
+
+        // Root notes alphabetisch
+        val rootNotes = notesFull
+            .filter { it.notebookId == null }
+            .sortedBy { it.title.lowercase() }
+            .filter { it.title.lowercase().contains(q) || q.isBlank() }
+            .map { TreeItem<TreeNode>(TreeNode.RootNote(it.id.value, it.title.ifBlank { "(Ohne Titel)" })) }
+
+        // Folders alphabetisch
+        val folders = notebookRepo.findAll()
+            .sortedBy { it.name.lowercase() }
+            .mapNotNull { folder ->
+                val folderNotes = notesFull
+                    .filter { it.notebookId == folder.id }
+                    .sortedBy { it.title.lowercase() }
+                    .map { note ->
+                        TreeItem<TreeNode>(TreeNode.FolderNote(note.id.value, note.title.ifBlank { "(Ohne Titel)" }, folder.id.value))
+                    }
+
+                // Filter: Folder sichtbar, wenn Folder-Name matcht ODER eine Note matcht
+                val folderNameMatches = folder.name.lowercase().contains(q)
+                val filteredNotes = if (q.isBlank() || folderNameMatches) {
+                    folderNotes
+                } else {
+                    folderNotes.filter { (it.value as TreeNode.FolderNote).title.lowercase().contains(q) }
+                }
+
+                // Wenn weder Foldername noch Notes matchen -> null
+                if (q.isNotBlank() && !folderNameMatches && filteredNotes.isEmpty()) {
+                    null
+                } else {
+                    TreeItem<TreeNode>(TreeNode.Folder(folder.id.value, folder.name)).apply {
+                        children.setAll(filteredNotes)
+                        isExpanded = true
+                    }
+                }
+            }
+
+        notebookTreeRoot.children.setAll(rootNotes + folders)
+
+        // Selection beibehalten, wenn möglich
+        val id = selectedId
+        if (id != null) {
+            selectTreeNoteById(id)
+        }
+    }
+
+    private fun selectTreeNoteById(noteId: String) {
+        fun dfs(item: TreeItem<TreeNode>): TreeItem<TreeNode>? {
+            val v = item.value
+            if (v is TreeNode.RootNote && v.noteId == noteId) return item
+            if (v is TreeNode.FolderNote && v.noteId == noteId) return item
+            for (c in item.children) {
+                val found = dfs(c)
+                if (found != null) return found
+            }
+            return null
+        }
+
+        for (top in notebookTreeRoot.children) {
+            val found = dfs(top)
+            if (found != null) {
+                notebookTree.selectionModel.select(found)
+                break
+            }
+        }
+    }
+
+    // ---------------- Trash / Savestates refresh ----------------
 
     private fun refreshTrashList() {
         val summaries = service.listTrashedNotes()
@@ -307,6 +455,8 @@ class MainController {
             else "Revisionen für Notiz: $noteId"
     }
 
+    // ---------------- Open / New / Save / Delete ----------------
+
     private fun openNote(noteId: String, inTrash: Boolean) {
         selectedId = noteId
         if (!inTrash) lastActiveNoteId = noteId
@@ -321,8 +471,18 @@ class MainController {
 
     private fun onNew() {
         if (!APnotebooks.isVisible) return
+
+        // Wenn Folder selektiert ist: neue Note in Folder, sonst Root
+        val folderId: String? = (selectedTreeNode as? TreeNode.Folder)?.notebookId
+
         clearEditorAndSelections()
         titleField.requestFocus()
+
+        // Merken: selectedTreeNode bleibt Folder? -> wir setzen es wieder
+        if (folderId != null) {
+            // Folder selektiert lassen (nur UI)
+            // (Note wird erst beim Save erzeugt; Zuordnung machen wir später sauber im Service)
+        }
     }
 
     private fun onSave() {
@@ -333,6 +493,7 @@ class MainController {
 
         val id = selectedId
         if (id == null) {
+            // NOTE: createNote() setzt aktuell notebookId noch nicht (muss im nächsten Schritt erweitert werden)
             val newId = service.createNote(title, content)
             selectedId = newId.value
             lastActiveNoteId = newId.value
@@ -346,8 +507,8 @@ class MainController {
         val refreshed = service.getNote(NoteId(selectedId!!))
         LBlastchange.text = refreshed.updatedAt.toString()
 
-        refreshNotebookList()
-        selectInList(LVnotebook, selectedId!!)
+        refreshNotebookTree()
+        selectTreeNoteById(selectedId!!)
     }
 
     private fun onDelete() {
@@ -362,7 +523,7 @@ class MainController {
         val id = selectedId ?: return
         service.moveToTrash(NoteId(id))
         clearEditorAndSelections()
-        refreshNotebookList()
+        refreshNotebookTree()
     }
 
     private fun purgeCurrentTrashNote() {
@@ -389,7 +550,7 @@ class MainController {
 
         clearEditorAndSelections()
         refreshTrashList()
-        refreshNotebookList()
+        refreshNotebookTree()
     }
 
     private fun onPurgeSelectedTrash() {
@@ -444,11 +605,11 @@ class MainController {
 
         showLeftPane(APnotebooks)
         clearEditorAndSelections()
-        refreshNotebookList()
+        refreshNotebookTree()
         setCenterMode()
 
         openNote(noteId, inTrash = false)
-        selectInList(LVnotebook, noteId)
+        selectTreeNoteById(noteId)
 
         LBsaved.text = "Auf Revision zurückgesetzt"
     }
@@ -466,11 +627,6 @@ class MainController {
             remaining == 1L -> "Papierkorb: 1 Tag übrig"
             else -> "Papierkorb: $remaining Tage übrig"
         }
-    }
-
-    private fun selectInList(list: ListView<Pair<String, String>>, id: String) {
-        val idx = list.items.indexOfFirst { it.first == id }
-        if (idx >= 0) list.selectionModel.select(idx)
     }
 
     fun close() {

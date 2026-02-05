@@ -57,9 +57,21 @@ class SqliteDatabase(private val dbPath: Path) : AutoCloseable {
                 """.trimIndent()
             )
 
+            st.execute(
+                """
+                CREATE TABLE IF NOT EXISTS notebooks (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL
+                );
+                """.trimIndent()
+            )
+
             st.execute("CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at);")
             st.execute("CREATE INDEX IF NOT EXISTS idx_notes_trashed_at ON notes(trashed_at);")
             st.execute("CREATE INDEX IF NOT EXISTS idx_revisions_note_id_created_at ON revisions(note_id, created_at);")
+            st.execute("ALTER TABLE notes ADD COLUMN notebook_id TEXT NULL;")
+            st.execute("CREATE INDEX IF NOT EXISTS idx_notes_notebook_id ON notes(notebook_id);")
+
         }
     }
 
