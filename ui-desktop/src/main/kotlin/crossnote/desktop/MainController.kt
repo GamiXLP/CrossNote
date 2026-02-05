@@ -88,6 +88,9 @@ class MainController {
     private var lastActiveNoteId: String? = null
     private var darkMode: Boolean = false
 
+    private var expandedBeforeSearch: Set<String> = emptySet()
+    private var wasSearching: Boolean = false
+
     // ---- Tree Root ----
     private val treeRoot: TreeItem<NavNode> =
         TreeItem<NavNode>(NavNode.RootHeader).apply { isExpanded = true }
@@ -146,9 +149,26 @@ class MainController {
 
         // Search fields
         TFnotebook.textProperty().addListener { _, _, newValue ->
-            notebookSearch = newValue.trim().lowercase()
+            val newQuery = newValue.trim().lowercase()
+            val nowSearching = newQuery.isNotBlank()
+
+            // Suche startet: Expanded-State merken
+            if (nowSearching && !wasSearching) {
+                expandedBeforeSearch = collectExpandedFolderIds(treeRoot)
+            }
+
+            // Suche endet: wir stellen nach refresh wieder her (siehe refreshNotebookTree)
+            notebookSearch = newQuery
             refreshNotebookTree()
+
+            // Suche endet: Expanded-State wiederherstellen (nach rebuild!)
+            if (!nowSearching && wasSearching) {
+                applyExpandedFolderIds(treeRoot, expandedBeforeSearch)
+            }
+
+            wasSearching = nowSearching
         }
+
         TFtrashcan.textProperty().addListener { _, _, newValue ->
             val q = newValue.trim().lowercase()
             trashFiltered.setPredicate { it.second.lowercase().contains(q) }
@@ -286,10 +306,10 @@ class MainController {
     private fun buildFolderItems(
         parent: NotebookId?,
         notebooks: List<Notebook>,
+        expandedIds: Set<String>,
         includeAll: Boolean = false
     ): List<TreeItem<NavNode>> {
-
-        val q = notebookSearch // schon lowercase bei dir
+        val q = notebookSearch
         val children = notebooks
             .filter { it.parentId == parent }
             .sortedBy { it.name.lowercase() }
@@ -298,12 +318,13 @@ class MainController {
             val folderMatches = q.isNotBlank() && nb.name.lowercase().contains(q)
             val includeHere = includeAll || folderMatches
 
+            val searching = notebookSearch.isNotBlank()
+
             val folderItem = TreeItem<NavNode>(NavNode.NotebookBranch(nb.id, nb.name)).apply {
-                isExpanded = true
+                // أثناء Suche aufklappen, sonst gespeicherten Zustand
+                isExpanded = if (searching) true else expandedIds.contains(nb.id.value)
             }
 
-            // Notes: wenn Ordner (oder ein Parent) matched -> alle Notes zeigen,
-            // sonst nach Titel filtern
             val notes = noteRepo.listNoteSummariesInNotebook(nb.id)
                 .filter { includeHere || q.isBlank() || it.title.lowercase().contains(q) }
 
@@ -311,15 +332,13 @@ class MainController {
                 folderItem.children.add(TreeItem(NavNode.NoteLeaf(NoteId(n.id), n.title)))
             }
 
-            // Subfolders rekursiv (wenn includeHere=true -> ganzer Unterbaum sichtbar)
-            val subFolders = buildFolderItems(nb.id, notebooks, includeHere)
+            val subFolders = buildFolderItems(nb.id, notebooks, expandedIds, includeHere)
             folderItem.children.addAll(subFolders)
 
-            // Entscheiden, ob Ordner überhaupt angezeigt wird
             val shouldShow = when {
                 q.isBlank() -> true
-                includeHere -> true                       // Ordner matched → immer zeigen + Inhalt
-                folderItem.children.isNotEmpty() -> true  // Treffer in Notes/Subfoldern
+                includeHere -> true
+                folderItem.children.isNotEmpty() -> true
                 else -> false
             }
 
@@ -329,19 +348,48 @@ class MainController {
 
     // ---------- Tree Build ----------
     private fun refreshNotebookTree() {
+        val searching = notebookSearch.isNotBlank()
+
+        // Wenn nicht gesucht wird: aktuellen Zustand nehmen
+        // Wenn gesucht wird: den Zustand VOR der Suche nehmen (damit wir nachher wiederherstellen können)
+        val expandedIds = if (searching) expandedBeforeSearch else collectExpandedFolderIds(treeRoot)
+
         treeRoot.children.clear()
 
-        // Root notes wie bisher (aus service)
         val rootNotes = noteRepo.listRootNoteSummaries()
             .filter { notebookSearch.isBlank() || it.title.lowercase().contains(notebookSearch) }
             .map { note -> TreeItem<NavNode>(NavNode.NoteLeaf(NoteId(note.id), note.title)) }
 
         val notebooks = notebookRepo.findAll()
-
-        // Folders recursively
-        val folderTree = buildFolderItems(null, notebooks)
+        val folderTree = buildFolderItems(null, notebooks, expandedIds)
 
         treeRoot.children.setAll(rootNotes + folderTree)
+    }
+
+    private fun collectExpandedFolderIds(root: TreeItem<NavNode>): Set<String> {
+        val expanded = mutableSetOf<String>()
+
+        fun walk(item: TreeItem<NavNode>) {
+            val v = item.value
+            if (v is NavNode.NotebookBranch && item.isExpanded) {
+                expanded.add(v.notebookId.value)
+            }
+            item.children.forEach { walk(it) }
+        }
+
+        root.children.forEach { walk(it) }
+        return expanded
+    }
+
+    private fun applyExpandedFolderIds(root: TreeItem<NavNode>, expandedIds: Set<String>) {
+        fun walk(item: TreeItem<NavNode>) {
+            val v = item.value
+            if (v is NavNode.NotebookBranch) {
+                item.isExpanded = expandedIds.contains(v.notebookId.value)
+            }
+            item.children.forEach { walk(it) }
+        }
+        root.children.forEach { walk(it) }
     }
 
     // ---------- Create Notebook ----------
