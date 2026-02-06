@@ -17,6 +17,12 @@ import javafx.scene.input.DragEvent
 import javafx.scene.input.Dragboard
 import javafx.scene.input.TransferMode
 import javafx.scene.layout.AnchorPane
+import javafx.scene.Group
+import javafx.scene.shape.SVGPath
+import javafx.scene.paint.Color
+import javafx.beans.value.ChangeListener
+import javafx.beans.value.ObservableValue
+
 import java.nio.file.Paths
 import java.time.Duration
 import java.time.Instant
@@ -792,20 +798,115 @@ class MainController {
         return true
     }
 
+    private fun createClosedFolderIcon(): Group {
+        val back = SVGPath().apply {
+            content = "M16 17a4 4 0 0 0-4 4v38a4 4 0 0 0 4 4h48a4 4 0 0 0 4-4V29a4 4 0 0 0-4-4H35.4c-.367 0-.711-.177-.924-.475l-.34-.474l-.376-.526l-.377-.525l-3.099-4.329A4 4 0 0 0 27.032 17z"
+            fill = javafx.scene.paint.Color.web("#f2994a")
+        }
+
+        val front = SVGPath().apply {
+            content = "M12 25h56v38H12z"
+            fill = javafx.scene.paint.Color.web("#f2c94c")
+        }
+
+        return Group(back, front).apply {
+            scaleX = 0.4
+            scaleY = 0.4
+        }
+    }
+
+
+    private fun createOpenFolderIcon(): Group {
+        val front = SVGPath().apply {
+            content = "M16.104 40.31A8 8 0 0 1 23.638 35h44.686c2.766 0 4.697 2.74 3.767 5.345l-7.143 20A4 4 0 0 1 61.181 63H10.838a2 2 0 0 1-1.883-2.673z"
+            fill = javafx.scene.paint.Color.web("#f2c94c")
+        }
+
+        val back = SVGPath().apply {
+            content = "M8 21a4 4 0 0 1 4-4h11.032a4 4 0 0 1 3.252 1.671l3.1 4.329l.376.525l.376.526l.34.474c.213.298.557.475.923.475H60a4 4 0 0 1 4 4v6H23.638a8 8 0 0 0-7.534 5.31l-7.15 20.017a2 2 0 0 0-.042 1.215A3.98 3.98 0 0 1 8 59z"
+            fill = javafx.scene.paint.Color.web("#f2994a")
+        }
+
+        return Group(back, front).apply {
+            scaleX = 0.4
+            scaleY = 0.4
+        }
+    }
+
+
+
     private inner class NotebookTreeCell : TreeCell<NavNode>() {
+
+        private val closedIcon = createClosedFolderIcon()
+        private val openIcon = createOpenFolderIcon()
+
+        private var expandedListener: ChangeListener<Boolean>? = null
 
         override fun updateItem(item: NavNode?, empty: Boolean) {
             super.updateItem(item, empty)
-            text = if (empty || item == null) "" else item.displayText()
-            if (empty) contextMenu = null
+
+            // ===== Cleanup alte Listener =====
+            expandedListener?.let {
+                treeItem?.expandedProperty()?.removeListener(it)
+            }
+
+            if (empty || item == null) {
+                text = ""
+                graphic = null
+                contextMenu = null
+                return
+            }
+
+            when (item) {
+
+                is NavNode.NotebookBranch -> {
+
+                    text = item.name
+                    val ti = treeItem ?: return
+
+                    fun updateIcon() {
+                        val icon = if (ti.isExpanded) openIcon else closedIcon
+
+                        // 👉 Klick auf Icon toggelt Expand
+                        icon.setOnMouseClicked { e ->
+                            ti.isExpanded = !ti.isExpanded
+                            e.consume()
+                        }
+
+                        graphic = icon
+                    }
+
+                    // Initial setzen
+                    updateIcon()
+
+                    // Listener speichern → wichtig
+                    expandedListener = ChangeListener { _, _, _ ->
+                        updateIcon()
+                    }
+
+                    ti.expandedProperty().addListener(expandedListener)
+                }
+
+                is NavNode.NoteLeaf -> {
+                    text = item.title
+                    graphic = null
+                }
+
+                is NavNode.RootHeader -> {
+                    text = "Root"
+                    graphic = null
+                }
+            }
         }
 
         init {
-            // Drag start: notes + folders
+
+            /* ================= Drag Start ================= */
             setOnDragDetected { e ->
                 when (val node = item) {
+
                     is NavNode.NoteLeaf -> {
-                        val dbb: Dragboard = startDragAndDrop(TransferMode.MOVE)
+                        val dbb = startDragAndDrop(TransferMode.MOVE)
                         val content = ClipboardContent()
                         content.putString("NOTE:${node.noteId.value}")
                         dbb.setContent(content)
@@ -813,7 +914,7 @@ class MainController {
                     }
 
                     is NavNode.NotebookBranch -> {
-                        val dbb: Dragboard = startDragAndDrop(TransferMode.MOVE)
+                        val dbb = startDragAndDrop(TransferMode.MOVE)
                         val content = ClipboardContent()
                         content.putString("FOLDER:${node.notebookId.value}")
                         dbb.setContent(content)
@@ -824,34 +925,40 @@ class MainController {
                 }
             }
 
-            // Drag over: accept on folders OR root
+            /* ================= Drag Over ================= */
             setOnDragOver { e: DragEvent ->
-                val payload = e.dragboard.string
-                if (payload.isNullOrBlank()) return@setOnDragOver
 
-                val target = item
-                val accept = target is NavNode.NotebookBranch || target is NavNode.RootHeader
-                if (accept) e.acceptTransferModes(TransferMode.MOVE)
+                val payload = e.dragboard.string ?: return@setOnDragOver
+
+                val accept =
+                    item is NavNode.NotebookBranch ||
+                    item is NavNode.RootHeader
+
+                if (accept) {
+                    e.acceptTransferModes(TransferMode.MOVE)
+                }
 
                 e.consume()
             }
 
-            // Drop: move note/folder
+            /* ================= Drop ================= */
             setOnDragDropped { e ->
+
                 val payload = e.dragboard.string
+
                 if (payload.isNullOrBlank()) {
                     e.isDropCompleted = false
                     return@setOnDragDropped
                 }
 
-                val target = item
-                val targetParent: NotebookId? = when (target) {
+                val targetParent: NotebookId? = when (val target = item) {
                     is NavNode.NotebookBranch -> target.notebookId
                     is NavNode.RootHeader -> null
                     else -> null
                 }
 
                 when {
+
                     payload.startsWith("NOTE:") -> {
                         val noteId = NoteId(payload.removePrefix("NOTE:"))
                         service.moveNoteToNotebook(noteId, targetParent)
@@ -879,12 +986,14 @@ class MainController {
                 e.consume()
             }
 
-            // Right-click menus
+            /* ================= Context Menu ================= */
             setOnContextMenuRequested { e ->
+
                 val node = item ?: return@setOnContextMenuRequested
                 treeView?.selectionModel?.select(index)
 
                 contextMenu = when (node) {
+
                     is NavNode.NoteLeaf -> ContextMenu(
                         MenuItem("🗑 Notiz löschen").apply {
                             setOnAction { deleteNoteFromNotebooks(node.noteId) }
@@ -917,8 +1026,12 @@ class MainController {
                     )
 
                     is NavNode.RootHeader -> ContextMenu(
-                        MenuItem("＋ Neue Notiz im Root").apply { setOnAction { startNewNote(null) } },
-                        MenuItem("➕ Neuer Ordner").apply { setOnAction { createNotebookDialog(null) } }
+                        MenuItem("＋ Neue Notiz im Root").apply {
+                            setOnAction { startNewNote(null) }
+                        },
+                        MenuItem("➕ Neuer Ordner").apply {
+                            setOnAction { createNotebookDialog(null) }
+                        }
                     )
                 }
 
@@ -926,6 +1039,7 @@ class MainController {
             }
         }
     }
+
 
     // =========================================================
     // Node Types
