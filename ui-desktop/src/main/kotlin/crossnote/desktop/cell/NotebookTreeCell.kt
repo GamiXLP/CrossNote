@@ -2,6 +2,7 @@ package crossnote.desktop.cell
 
 import crossnote.app.note.NoteAppService
 import crossnote.desktop.util.Dialogs
+import crossnote.desktop.util.NotebookTreeUtils
 import crossnote.desktop.NavNode
 import crossnote.domain.note.NoteId
 import crossnote.domain.note.NotebookId
@@ -14,6 +15,9 @@ import javafx.scene.input.ClipboardContent
 import javafx.scene.input.DragEvent
 import javafx.scene.input.Dragboard
 import javafx.scene.input.TransferMode
+import javafx.beans.value.ChangeListener
+import javafx.scene.paint.Color
+
 
 class NotebookTreeCell(
     private val service: NoteAppService,
@@ -27,11 +31,68 @@ class NotebookTreeCell(
     private val onTrashNotebookRecursively: (notebookId: NotebookId) -> Unit,
 ) : TreeCell<NavNode>() {
 
+    private val closedIcon = NotebookTreeUtils.createClosedFolderIcon()
+    private val openIcon = NotebookTreeUtils.createOpenFolderIcon()
+
+    private var expandedListener: ChangeListener<Boolean>? = null
+
     override fun updateItem(item: NavNode?, empty: Boolean) {
         super.updateItem(item, empty)
-        text = if (empty || item == null) "" else item.displayText()
-        if (empty) contextMenu = null
+
+        // ===== Cleanup alte Listener =====
+        expandedListener?.let {
+            treeItem?.expandedProperty()?.removeListener(it)
+        }
+
+        if (empty || item == null) {
+            text = ""
+            graphic = null
+            contextMenu = null
+            return
+        }
+
+        when (item) {
+
+            is NavNode.NotebookBranch -> {
+
+                text = item.name
+                val ti = treeItem ?: return
+
+                fun updateIcon() {
+                    val icon = if (ti.isExpanded) openIcon else closedIcon
+
+                    // 👉 Klick auf Icon toggelt Expand
+                    icon.setOnMouseClicked { e ->
+                        ti.isExpanded = !ti.isExpanded
+                        e.consume()
+                    }
+
+                    graphic = icon
+                }
+
+                // Initial setzen
+                updateIcon()
+
+                // Listener speichern → wichtig
+                expandedListener = ChangeListener { _, _, _ ->
+                    updateIcon()
+                }
+
+                ti.expandedProperty().addListener(expandedListener)
+            }
+
+            is NavNode.NoteLeaf -> {
+                text = item.title
+                graphic = null
+            }
+
+            is NavNode.RootHeader -> {
+                text = "Root"
+                graphic = null
+            }
+        }
     }
+
 
     init {
         // Drag start: notes + folders
