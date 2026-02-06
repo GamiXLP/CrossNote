@@ -244,6 +244,59 @@
 }
 
 /* =========================================================
+   TREEVIEW – CUSTOM FOLDER ICON SUPPORT
+   ========================================================= */
+
+/* Standard Pfeil komplett entfernen */
+.tree-cell .tree-disclosure-node {
+    -fx-padding: 0;
+    -fx-background-color: transparent;
+    -fx-shape: "";
+    -fx-min-width: 0;
+    -fx-pref-width: 0;
+    -fx-max-width: 0;
+}
+
+.tree-cell .tree-disclosure-node .arrow {
+    -fx-background-color: transparent;
+    -fx-shape: "";
+    -fx-padding: 0;
+}
+
+/* Mehr Platz links für Folder Icons */
+.tree-cell {
+    -fx-padding: 8 10 8 6;
+}
+
+/* Graphic Bereich (dein SVG Icon) */
+.tree-cell .graphic {
+    -fx-padding: 0 6 0 2;
+}
+
+/* Hover wirkt auch auf Icon sauber */
+.tree-cell:hover .graphic {
+    -fx-opacity: 0.95;
+}
+
+.tree-cell:selected .graphic {
+    -fx-opacity: 1;
+}
+
+/* Sanfter Hover Scale Effekt */
+.tree-cell:hover .graphic {
+    -fx-scale-x: 1.05;
+    -fx-scale-y: 1.05;
+}
+
+/* =========================================================
+   OPTIONAL – Smooth Folder Animation Vorbereitung
+   ========================================================= */
+.tree-cell .graphic {
+    -fx-transition: all 0.12s ease-in-out;
+}
+
+
+/* =========================================================
    SEPARATOR
    ========================================================= */
 .separator {
