@@ -16,6 +16,9 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.shape.SVGPath?>
 <?import java.lang.String?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+
 <BorderPane
         styleClass="root"
         stylesheets="@styles.css"
@@ -30,10 +33,13 @@
                 <Insets top="12" right="16" bottom="12" left="16"/>
             </padding>
 
-            <!-- App Icon -->
+            <!-- App Icon (PNG) -->
             <StackPane styleClass="app-icon">
-                <SVGPath styleClass="icon-large"
-                         content="M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/>
+                <ImageView fitWidth="26" fitHeight="26" preserveRatio="true" smooth="true">
+                    <image>
+                        <Image url="@images/CrossNote_Icon.png"/>
+                    </image>
+                </ImageView>
             </StackPane>
 
             <Label text="CrossNote" styleClass="app-title"/>
@@ -94,7 +100,7 @@
 
                             <HBox spacing="10" alignment="CENTER_LEFT">
                                 <SVGPath styleClass="icon"
-                                         content="M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/>
+                                         content="M3 7h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M3 7a2 2 0 0 1 2-2h4l2 2"/>
                                 <Label text="Notizen" styleClass="section-title"/>
                                 <Region HBox.hgrow="ALWAYS"/>
                             </HBox>
@@ -121,7 +127,14 @@
 
                             <HBox spacing="10" alignment="CENTER_LEFT">
                                 <SVGPath styleClass="icon"
-                                         content="M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/>
+                                         content="
+                                   M12 20h5c0.5 0 1 -0.5 1 -1v-14
+                                   M12 20h-5c-0.5 0 -1 -0.5 -1 -1v-14
+                                   M4 5h16
+                                   M10 4h4
+                                   M10 9v7
+                                   M14 9v7
+                                 "/>
                                 <Label text="Papierkorb" styleClass="section-title"/>
                                 <Region HBox.hgrow="ALWAYS"/>
                             </HBox>
@@ -148,7 +161,7 @@
 
                             <HBox spacing="10" alignment="CENTER_LEFT">
                                 <SVGPath styleClass="icon"
-                                         content="M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/>
+                                         content="M12 8v5l3 2 M3 12a9 9 0 1 0 3-6 M3 3v6h6"/>
                                 <Label text="Speicherstände" styleClass="section-title"/>
                                 <Label fx:id="LBdataname"
                                        text="Dateiname"
@@ -160,7 +173,7 @@
                                         mnemonicParsing="false">
                                     <graphic>
                                         <SVGPath styleClass="icon"
-                                                 content="M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/>
+                                                 content="M12 3v10 M8 9l4 4l4-4 M5 21h14"/>
                                     </graphic>
                                 </Button>
                             </HBox>
@@ -203,7 +216,7 @@
                         mnemonicParsing="false">
                     <graphic>
                         <SVGPath styleClass="icon"
-                                 content="M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/>
+                                 content="M15 18l-6-6l6-6 M9 12h12"/>
                     </graphic>
                 </Button>
             </HBox>
@@ -221,11 +234,11 @@
                            HBox.hgrow="ALWAYS"/>
 
                 <Button fx:id="BTNsave"
-                        styleClass="icon-pill primary"
+                        styleClass="icon-pill"
                         mnemonicParsing="false">
                     <graphic>
                         <SVGPath styleClass="icon"
-                                 content="M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/>
+                                 content="M5 4h14l1 1v16H4V5z M8 4v6h8V4 M8 21v-7h8v7"/>
                     </graphic>
                 </Button>
             </HBox>
