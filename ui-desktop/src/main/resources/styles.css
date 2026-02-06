@@ -346,6 +346,31 @@
     -fx-fill: #d0d7ff;
 }
 
+/* ===== Dark: TextArea (Editor) wirklich dunkel machen ===== */
+.root.dark .note-content {
+    /* macht die innere Fläche dunkel (wichtig!) */
+    -fx-control-inner-background: rgba(255,255,255,0.06);
+
+    /* je nach Skin wird auch das hier ausgewertet */
+    -fx-background-color: rgba(255,255,255,0.06);
+    -fx-text-fill: #e5e7eb;
+    -fx-prompt-text-fill: rgba(229,231,235,0.45);
+
+    /* optional: gelbe "Papier"-Border im Darkmode etwas neutraler */
+    -fx-border-color: rgba(255,255,255,0.14);
+}
+
+/* extra sicher: alle inneren Layer ebenfalls dunkel */
+.root.dark .note-content .content,
+.root.dark .note-content .scroll-pane,
+.root.dark .note-content .scroll-pane .viewport {
+    -fx-background-color: rgba(255,255,255,0.06);
+}
+/* ===== Dark: Tree disclosure arrows sichtbar ===== */
+.root.dark .tree-cell .tree-disclosure-node .arrow {
+    -fx-background-color: rgba(229,231,235,0.85); /* hell, gut sichtbar */
+}
+
 /* Theme Toggle: niemals Text anzeigen */
 .theme-toggle {
     -fx-content-display: graphic-only;
