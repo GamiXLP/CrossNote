@@ -19,6 +19,19 @@ import crossnote.infra.persistence.SqliteRevisionRepository
 import crossnote.infra.persistence.SqliteSettingsRepository
 import crossnote.infra.persistence.SystemClock
 import crossnote.infra.persistence.UuidIdGenerator
+import crossnote.app.sync.SyncService
+import crossnote.desktop.util.Dialogs
+import crossnote.desktop.sync.HttpSyncClient
+import crossnote.desktop.sync.LocalSyncServer
+import crossnote.desktop.sync.NoteWire
+import java.time.Instant
+import javafx.scene.control.ButtonType
+import javafx.scene.control.CheckBox
+import javafx.scene.control.Dialog
+import javafx.scene.control.TextInputDialog
+import javafx.scene.layout.GridPane
+import javafx.geometry.Insets
+import javafx.scene.control.TextField as FxTextField
 import javafx.event.ActionEvent
 import javafx.fxml.FXML
 import javafx.scene.control.Button
@@ -57,6 +70,10 @@ class MainController {
         clock = SystemClock()
     )
 
+    private val syncService = SyncService(settingsRepo)
+    private val syncClient = HttpSyncClient()
+    private val localSyncServer = LocalSyncServer(noteRepo)
+
     // ---------- Left panes ----------
     @FXML lateinit var APnotebooks: AnchorPane
     @FXML lateinit var APtrashcan: AnchorPane
@@ -80,6 +97,7 @@ class MainController {
     @FXML lateinit var BTNsavestate: Button
     @FXML lateinit var BTNdarkmode: Button
     @FXML lateinit var BTNsave: Button
+    @FXML lateinit var BTNsync: Button
 
     // ---------- Editor ----------
     @FXML lateinit var titleField: TextField
@@ -121,6 +139,8 @@ class MainController {
         setupTheme()
 
         applyInitialUiState()
+
+        startServerIfEnabled()
     }
 
     // =========================================================
@@ -296,6 +316,10 @@ class MainController {
         }
 
         BTNsave.setOnAction { onSave() }
+
+        BTNsync.setOnAction {
+            openSyncSettingsDialog()
+        }
     }
 
     private fun setupTheme() {
@@ -331,7 +355,160 @@ class MainController {
         LVsavestate.selectionModel.clearSelection()
     }
 
+    private fun openSyncSettingsDialog() {
+        val cfg = syncService.loadConfig()
+
+        val enabled = CheckBox("Synchronisation aktiv").apply { isSelected = cfg.enabled }
+        val serverMode = CheckBox("Diesen Rechner als Server verwenden").apply { isSelected = cfg.serverMode }
+
+        val hostField = FxTextField(cfg.host)
+        val portField = FxTextField(cfg.port.toString())
+
+        fun applyServerModeUi() {
+            val isServer = serverMode.isSelected
+            hostField.isDisable = isServer
+            hostField.opacity = if (isServer) 0.6 else 1.0
+            // port bleibt aktiv: auch Server braucht Port
+        }
+
+        serverMode.selectedProperty().addListener { _, _, _ -> applyServerModeUi() }
+        applyServerModeUi()
+
+        val grid = GridPane().apply {
+            hgap = 10.0
+            vgap = 10.0
+            padding = Insets(10.0)
+
+            add(enabled, 0, 0, 2, 1)
+            add(serverMode, 0, 1, 2, 1)
+
+            add(javafx.scene.control.Label("Server Host:"), 0, 2)
+            add(hostField, 1, 2)
+
+            add(javafx.scene.control.Label("Port:"), 0, 3)
+            add(portField, 1, 3)
+        }
+
+        val dialog = Dialog<ButtonType>().apply {
+            title = "Synchronisation"
+            headerText = "Server auswählen oder diesen Rechner als Server nutzen"
+            dialogPane.content = grid
+
+            val btnSyncNow = ButtonType("Jetzt synchronisieren", ButtonType.OK.buttonData)
+            dialogPane.buttonTypes.addAll(btnSyncNow, ButtonType.APPLY, ButtonType.CANCEL)
+        }
+
+        val result = dialog.showAndWait()
+        if (result.isEmpty) return
+
+        // Speichern, wenn APPLY oder SyncNow gedrückt wurde
+        if (result.get() == ButtonType.APPLY || result.get().text == "Jetzt synchronisieren") {
+            val port = portField.text.trim().toIntOrNull()
+            if (port == null || port <= 0 || port > 65535) {
+                Dialogs.error("Synchronisation", "Ungültiger Port: '${portField.text}'")
+                return
+            }
+
+            val newCfg = cfg.copy(
+                enabled = enabled.isSelected,
+                serverMode = serverMode.isSelected,
+                host = hostField.text.trim().ifBlank { "localhost" },
+                port = port
+            )
+            syncService.saveConfig(newCfg)
+        }
+
+        // SyncNow gedrückt
+        if (result.get().text == "Jetzt synchronisieren") {
+            doSyncNow()
+        }
+    }
+
+    private fun doSyncNow() {
+        val cfg = syncService.loadConfig()
+        if (!cfg.enabled) {
+            Dialogs.info("Synchronisation", "Synchronisation ist deaktiviert (siehe Einstellungen).")
+            return
+        }
+
+        // Wenn dieser Rechner Server ist: nur starten/Status anzeigen (Client-Sync wäre sinnlos gegen sich selbst)
+        if (cfg.serverMode) {
+            if (!localSyncServer.isRunning()) {
+                try {
+                    localSyncServer.start(cfg.port)
+                } catch (t: Throwable) {
+                    Dialogs.error("Synchronisation", "Server konnte nicht gestartet werden: ${t.message}")
+                    return
+                }
+            }
+            Dialogs.info("Synchronisation", "Server-Modus aktiv.\nServer läuft auf Port ${cfg.port}.")
+            return
+        }
+
+        // CLIENT MODE: Pull + Push
+        try {
+            // 1) PULL
+            val pullAfter: Instant? = cfg.lastPulledAt
+            val pulledBody = syncClient.pullNotes(cfg.host, cfg.port, pullAfter)
+            val pulledNotes = NoteWire.decodeLines(pulledBody)
+
+            var pulledApplied = 0
+            for (remote in pulledNotes) {
+                val local = noteRepo.findById(remote.id)
+                if (local == null || remote.updatedAt.isAfter(local.updatedAt)) {
+                    noteRepo.save(remote)
+                    pulledApplied++
+                }
+            }
+
+            val newLastPulledAt = pulledNotes.maxOfOrNull { it.updatedAt } ?: cfg.lastPulledAt
+
+            // 2) PUSH (alle lokalen Notes nach lastPushedAt)
+            val pushAfter: Instant? = cfg.lastPushedAt
+            val localChanged =
+                noteRepo.findAll().filter { note ->
+                    pushAfter == null || note.updatedAt.isAfter(pushAfter)
+                }
+
+            val pushBody = NoteWire.encodeLines(localChanged)
+            val pushResult = syncClient.pushNotes(cfg.host, cfg.port, pushBody)
+
+            val newLastPushedAt = localChanged.maxOfOrNull { it.updatedAt } ?: cfg.lastPushedAt
+
+            // 3) Watermarks speichern
+            val updatedCfg = cfg.copy(
+                lastPulledAt = newLastPulledAt,
+                lastPushedAt = newLastPushedAt
+            )
+            syncService.saveConfig(updatedCfg)
+
+            // 4) UI refresh
+            notebookTreePresenter.refresh()
+            trashPresenter.refresh()
+
+            Dialogs.info(
+                "Synchronisation",
+                "Pull: erhalten=${pulledNotes.size}, übernommen=$pulledApplied\n" +
+                    "Push: gesendet=${localChanged.size}, Server: $pushResult"
+            )
+        } catch (t: Throwable) {
+            Dialogs.error("Synchronisation", "Sync fehlgeschlagen: ${t.message}")
+        }
+    }
+
+    private fun startServerIfEnabled() {
+        val cfg = syncService.loadConfig()
+        if (cfg.enabled && cfg.serverMode) {
+            try {
+                localSyncServer.start(cfg.port)
+            } catch (t: Throwable) {
+                Dialogs.error("Synchronisation", "Server konnte nicht gestartet werden: ${t.message}")
+            }
+        }
+    }
+
     fun close() {
+        localSyncServer.stop()
         db.close()
     }
 }
