@@ -1,12 +1,13 @@
 package crossnote.desktop.cell
 
 import crossnote.app.note.NoteAppService
+import crossnote.desktop.NavNode
 import crossnote.desktop.util.Dialogs
 import crossnote.desktop.util.NotebookTreeUtils
-import crossnote.desktop.NavNode
 import crossnote.domain.note.NoteId
 import crossnote.domain.note.NotebookId
 import crossnote.infra.persistence.SqliteNotebookRepository
+import javafx.beans.value.ChangeListener
 import javafx.scene.control.ContextMenu
 import javafx.scene.control.MenuItem
 import javafx.scene.control.SeparatorMenuItem
@@ -15,9 +16,6 @@ import javafx.scene.input.ClipboardContent
 import javafx.scene.input.DragEvent
 import javafx.scene.input.Dragboard
 import javafx.scene.input.TransferMode
-import javafx.beans.value.ChangeListener
-import javafx.scene.paint.Color
-
 
 class NotebookTreeCell(
     private val service: NoteAppService,
@@ -31,21 +29,26 @@ class NotebookTreeCell(
     private val onTrashNotebookRecursively: (notebookId: NotebookId) -> Unit,
 ) : TreeCell<NavNode>() {
 
-    private val closedIcon = NotebookTreeUtils.createClosedFolderIcon()
-    private val openIcon = NotebookTreeUtils.createOpenFolderIcon()
-
+    // ---------- Expand listener handling ----------
     private var expandedListener: ChangeListener<Boolean>? = null
+    private var listenedTreeItem: javafx.scene.control.TreeItem<NavNode>? = null
 
+    // =========================================================
+    // updateItem (Cell Reuse safe)
+    // =========================================================
     override fun updateItem(item: NavNode?, empty: Boolean) {
+
+        // Listener vom vorherigen TreeItem entfernen (wichtig!)
+        expandedListener?.let { l ->
+            listenedTreeItem?.expandedProperty()?.removeListener(l)
+        }
+        expandedListener = null
+        listenedTreeItem = null
+
         super.updateItem(item, empty)
 
-        // ===== Cleanup alte Listener =====
-        expandedListener?.let {
-            treeItem?.expandedProperty()?.removeListener(it)
-        }
-
         if (empty || item == null) {
-            text = ""
+            text = null
             graphic = null
             contextMenu = null
             return
@@ -54,14 +57,19 @@ class NotebookTreeCell(
         when (item) {
 
             is NavNode.NotebookBranch -> {
-
                 text = item.name
                 val ti = treeItem ?: return
 
-                fun updateIcon() {
-                    val icon = if (ti.isExpanded) openIcon else closedIcon
+                fun buildIcon(expanded: Boolean) =
+                    if (expanded)
+                        NotebookTreeUtils.createOpenFolderIcon()
+                    else
+                        NotebookTreeUtils.createClosedFolderIcon()
 
-                    // 👉 Klick auf Icon toggelt Expand
+                fun updateIcon() {
+                    val icon = buildIcon(ti.isExpanded)
+
+                    // Klick auf Icon toggelt Expand
                     icon.setOnMouseClicked { e ->
                         ti.isExpanded = !ti.isExpanded
                         e.consume()
@@ -70,15 +78,11 @@ class NotebookTreeCell(
                     graphic = icon
                 }
 
-                // Initial setzen
                 updateIcon()
 
-                // Listener speichern → wichtig
-                expandedListener = ChangeListener { _, _, _ ->
-                    updateIcon()
-                }
-
+                expandedListener = ChangeListener { _, _, _ -> updateIcon() }
                 ti.expandedProperty().addListener(expandedListener)
+                listenedTreeItem = ti
             }
 
             is NavNode.NoteLeaf -> {
@@ -93,10 +97,15 @@ class NotebookTreeCell(
         }
     }
 
-
+    // =========================================================
+    // Init – Drag & Context Menus
+    // =========================================================
     init {
-        // Drag start: notes + folders
+
+        // ---------- Drag start ----------
         setOnDragDetected { e ->
+            if (isEmpty || item == null) return@setOnDragDetected
+
             when (val node = item) {
                 is NavNode.NoteLeaf -> {
                     val dbb: Dragboard = startDragAndDrop(TransferMode.MOVE)
@@ -118,28 +127,33 @@ class NotebookTreeCell(
             }
         }
 
-        // Drag over: accept on folders OR root
+        // ---------- Drag over ----------
         setOnDragOver { e: DragEvent ->
-            val payload = e.dragboard.string
-            if (payload.isNullOrBlank()) return@setOnDragOver
+            if (isEmpty || item == null) return@setOnDragOver
 
+            val payload = e.dragboard.string ?: return@setOnDragOver
             val target = item
-            val accept = target is NavNode.NotebookBranch || target is NavNode.RootHeader
-            if (accept) e.acceptTransferModes(TransferMode.MOVE)
+
+            if (target is NavNode.NotebookBranch || target is NavNode.RootHeader) {
+                e.acceptTransferModes(TransferMode.MOVE)
+            }
 
             e.consume()
         }
 
-        // Drop: move note/folder
+        // ---------- Drop ----------
         setOnDragDropped { e ->
-            val payload = e.dragboard.string
-            if (payload.isNullOrBlank()) {
+            if (isEmpty || item == null) {
                 e.isDropCompleted = false
                 return@setOnDragDropped
             }
 
-            val target = item
-            val targetParent: NotebookId? = when (target) {
+            val payload = e.dragboard.string ?: run {
+                e.isDropCompleted = false
+                return@setOnDragDropped
+            }
+
+            val targetParent: NotebookId? = when (val target = item) {
                 is NavNode.NotebookBranch -> target.notebookId
                 is NavNode.RootHeader -> null
                 else -> null
@@ -149,9 +163,9 @@ class NotebookTreeCell(
                 payload.startsWith("NOTE:") -> {
                     val noteId = NoteId(payload.removePrefix("NOTE:"))
                     service.moveNoteToNotebook(noteId, targetParent)
-                    e.isDropCompleted = true
                     onRefreshTree()
                     onOpenNote(noteId.value)
+                    e.isDropCompleted = true
                 }
 
                 payload.startsWith("FOLDER:") -> {
@@ -163,8 +177,8 @@ class NotebookTreeCell(
                     }
 
                     notebookRepo.moveNotebook(folderId, targetParent)
-                    e.isDropCompleted = true
                     onRefreshTree()
+                    e.isDropCompleted = true
                 }
 
                 else -> e.isDropCompleted = false
@@ -173,12 +187,15 @@ class NotebookTreeCell(
             e.consume()
         }
 
-        // Right-click menus
+        // ---------- Context menus ----------
         setOnContextMenuRequested { e ->
+            if (isEmpty || item == null) return@setOnContextMenuRequested
+
             val node = item ?: return@setOnContextMenuRequested
             treeView?.selectionModel?.select(index)
 
             contextMenu = when (node) {
+
                 is NavNode.NoteLeaf -> ContextMenu(
                     MenuItem("🗑 Notiz löschen").apply {
                         setOnAction { onDeleteNote(node.noteId) }
@@ -211,8 +228,12 @@ class NotebookTreeCell(
                 )
 
                 is NavNode.RootHeader -> ContextMenu(
-                    MenuItem("＋ Neue Notiz im Root").apply { setOnAction { onStartNewNote(null) } },
-                    MenuItem("➕ Neuer Ordner").apply { setOnAction { onCreateNotebook(null) } }
+                    MenuItem("＋ Neue Notiz im Root").apply {
+                        setOnAction { onStartNewNote(null) }
+                    },
+                    MenuItem("➕ Neuer Ordner").apply {
+                        setOnAction { onCreateNotebook(null) }
+                    }
                 )
             }
 
@@ -220,6 +241,9 @@ class NotebookTreeCell(
         }
     }
 
+    // =========================================================
+    // Helpers
+    // =========================================================
     private fun canMoveFolder(folderId: NotebookId, targetParent: NotebookId?): Boolean {
         if (targetParent == null) return true
         if (targetParent == folderId) return false
