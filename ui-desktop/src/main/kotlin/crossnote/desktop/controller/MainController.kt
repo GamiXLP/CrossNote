@@ -418,6 +418,7 @@ class MainController {
             syncService.saveConfig(newCfg)
         }
 
+
         // SyncNow gedrückt
         if (result.get().text == "Jetzt synchronisieren") {
             doSyncNow()
@@ -448,39 +449,28 @@ class MainController {
         // CLIENT MODE: Pull + Push
         try {
             // 1) PULL
-            val pullAfter: Instant? = cfg.lastPulledAt
-            val pulledBody = syncClient.pullNotes(cfg.host, cfg.port, pullAfter)
+            val pulledBody = syncClient.pullNotes(cfg.host, cfg.port, after = null)
             val pulledNotes = NoteWire.decodeLines(pulledBody)
 
             var pulledApplied = 0
             for (remote in pulledNotes) {
                 val local = noteRepo.findById(remote.id)
-                if (local == null || remote.updatedAt.isAfter(local.updatedAt)) {
+                val shouldApply =
+                    local == null ||
+                    remote.updatedAt.isAfter(local.updatedAt) ||
+                    (remote.updatedAt == local.updatedAt &&
+                        (remote.title != local.title || remote.content != local.content || remote.trashedAt != local.trashedAt))
+
+                if (shouldApply) {
                     noteRepo.save(remote)
                     pulledApplied++
                 }
             }
 
-            val newLastPulledAt = pulledNotes.maxOfOrNull { it.updatedAt } ?: cfg.lastPulledAt
-
             // 2) PUSH (alle lokalen Notes nach lastPushedAt)
-            val pushAfter: Instant? = cfg.lastPushedAt
-            val localChanged =
-                noteRepo.findAll().filter { note ->
-                    pushAfter == null || note.updatedAt.isAfter(pushAfter)
-                }
-
+            val localChanged = noteRepo.findAll()
             val pushBody = NoteWire.encodeLines(localChanged)
             val pushResult = syncClient.pushNotes(cfg.host, cfg.port, pushBody)
-
-            val newLastPushedAt = localChanged.maxOfOrNull { it.updatedAt } ?: cfg.lastPushedAt
-
-            // 3) Watermarks speichern
-            val updatedCfg = cfg.copy(
-                lastPulledAt = newLastPulledAt,
-                lastPushedAt = newLastPushedAt
-            )
-            syncService.saveConfig(updatedCfg)
 
             // 4) UI refresh
             notebookTreePresenter.refresh()

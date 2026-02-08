@@ -20,7 +20,8 @@ class LocalSyncServer(
     fun start(port: Int) {
         if (server != null) return
 
-        val s = HttpServer.create(InetSocketAddress(port), 0)
+        val s = HttpServer.create(InetSocketAddress("0.0.0.0", port), 0)
+        println("SyncServer listening on 0.0.0.0:$port")
 
         // minimal endpoints
         s.createContext("/ping") { ex ->
@@ -96,12 +97,15 @@ class LocalSyncServer(
             return true
         }
 
-        val remoteNewer = remote.updatedAt.isAfter(local.updatedAt)
-        if (remoteNewer) {
+        val shouldApply =
+            remote.updatedAt.isAfter(local.updatedAt) ||
+            (remote.updatedAt == local.updatedAt &&
+                (remote.title != local.title || remote.content != local.content || remote.trashedAt != local.trashedAt))
+
+        if (shouldApply) {
             noteRepo.save(remote)
             return true
         }
-
         return false
     }
 
