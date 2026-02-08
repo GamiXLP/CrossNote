@@ -24,6 +24,7 @@ import crossnote.desktop.util.Dialogs
 import crossnote.desktop.sync.HttpSyncClient
 import crossnote.desktop.sync.LocalSyncServer
 import crossnote.desktop.sync.NoteWire
+import crossnote.desktop.sync.NotebookWire
 import java.time.Instant
 import javafx.scene.control.ButtonType
 import javafx.scene.control.CheckBox
@@ -72,7 +73,7 @@ class MainController {
 
     private val syncService = SyncService(settingsRepo)
     private val syncClient = HttpSyncClient()
-    private val localSyncServer = LocalSyncServer(noteRepo)
+    private val localSyncServer = LocalSyncServer(notebookRepo, noteRepo)
 
     // ---------- Left panes ----------
     @FXML lateinit var APnotebooks: AnchorPane
@@ -448,6 +449,29 @@ class MainController {
 
         // CLIENT MODE: Pull + Push
         try {
+            // 0) NOTEBOOKS zuerst (sonst "verschwinden" Notes im Tree)
+            val nbBody = syncClient.pullNotebooks(cfg.host, cfg.port)
+            val remoteNbs = NotebookWire.decodeLines(nbBody)
+
+            var nbApplied = 0
+            for (remote in remoteNbs) {
+                val local = notebookRepo.findById(remote.id)
+                val shouldApply =
+                    local == null ||
+                    local.name != remote.name ||
+                    local.parentId != remote.parentId ||
+                    local.trashedAt != remote.trashedAt
+
+                if (shouldApply) {
+                    notebookRepo.save(remote)
+                    nbApplied++
+                }
+            }
+
+            // Optional: Notebooks auch pushen (Full Sync)
+            val localNbs = notebookRepo.findAll()
+            val nbPushBody = NotebookWire.encodeLines(localNbs)
+            val nbPushResult = syncClient.pushNotebooks(cfg.host, cfg.port, nbPushBody)
             // 1) PULL
             val pulledBody = syncClient.pullNotes(cfg.host, cfg.port, after = null)
             val pulledNotes = NoteWire.decodeLines(pulledBody)
@@ -477,9 +501,11 @@ class MainController {
             trashPresenter.refresh()
 
             Dialogs.info(
-                "Synchronisation",
-                "Pull: erhalten=${pulledNotes.size}, übernommen=$pulledApplied\n" +
-                    "Push: gesendet=${localChanged.size}, Server: $pushResult"
+            "Synchronisation",
+            "Notebooks Pull: erhalten=${remoteNbs.size}, übernommen=$nbApplied\n" +
+            "Notebooks Push: gesendet=${localNbs.size}, Server: $nbPushResult\n\n" +
+            "Notes Pull: erhalten=${pulledNotes.size}, übernommen=$pulledApplied\n" +
+            "Notes Push: gesendet=${localChanged.size}, Server: $pushResult"
             )
         } catch (t: Throwable) {
             Dialogs.error("Synchronisation", "Sync fehlgeschlagen: ${t.message}")

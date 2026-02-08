@@ -47,4 +47,33 @@ class HttpSyncClient {
         }
         return res.body()
     }
+
+    fun pullNotebooks(host: String, port: Int): String {
+        val uri = URI("http://$host:$port/notebooks")
+        val req = HttpRequest.newBuilder(uri)
+            .timeout(java.time.Duration.ofSeconds(4))
+            .GET()
+            .build()
+
+        val res = client.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+        if (res.statusCode() !in 200..299) {
+            error("Pull notebooks failed: HTTP ${res.statusCode()} - ${res.body()}")
+        }
+        return res.body()
+    }
+
+    fun pushNotebooks(host: String, port: Int, body: String): String {
+        val uri = URI("http://$host:$port/notebooks/push")
+        val req = HttpRequest.newBuilder(uri)
+            .timeout(java.time.Duration.ofSeconds(4))
+            .header("Content-Type", "text/plain; charset=utf-8")
+            .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+            .build()
+
+        val res = client.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+        if (res.statusCode() !in 200..299) {
+            error("Push notebooks failed: HTTP ${res.statusCode()} - ${res.body()}")
+        }
+        return res.body()
+    }
 }

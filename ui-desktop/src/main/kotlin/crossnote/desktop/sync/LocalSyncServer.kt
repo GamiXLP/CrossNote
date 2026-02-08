@@ -5,6 +5,9 @@ import com.sun.net.httpserver.HttpServer
 import crossnote.domain.note.Note
 import crossnote.domain.note.NoteId
 import crossnote.domain.note.NoteRepository
+import crossnote.domain.note.Notebook
+import crossnote.domain.note.NotebookRepository
+import crossnote.infra.persistence.SqliteNotebookRepository
 import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.URLDecoder
@@ -13,6 +16,7 @@ import java.time.Instant
 import java.util.concurrent.Executors
 
 class LocalSyncServer(
+    private val notebookRepo: SqliteNotebookRepository,
     private val noteRepo: NoteRepository
 ) {
     private var server: HttpServer? = null
@@ -26,6 +30,42 @@ class LocalSyncServer(
         // minimal endpoints
         s.createContext("/ping") { ex ->
             respondText(ex, 200, "ok")
+        }
+
+        // GET /notebooks
+        s.createContext("/notebooks") { ex ->
+            try {
+                if (ex.requestMethod.uppercase() != "GET") {
+                    respondText(ex, 405, "Method Not Allowed")
+                    return@createContext
+                }
+                val notebooks = notebookRepo.findAllIncludingTrashed()
+                respondText(ex, 200, NotebookWire.encodeLines(notebooks))
+            } catch (t: Throwable) {
+                respondText(ex, 500, "Server error: ${t.message}")
+            }
+        }
+
+        // POST /notebooks/push
+        s.createContext("/notebooks/push") { ex ->
+            try {
+                if (ex.requestMethod.uppercase() != "POST") {
+                    respondText(ex, 405, "Method Not Allowed")
+                    return@createContext
+                }
+
+                val body = ex.requestBody.readBytes().toString(StandardCharsets.UTF_8)
+                val incoming = NotebookWire.decodeLines(body)
+
+                var applied = 0
+                for (remote in incoming) {
+                    if (applyNotebook(remote)) applied++
+                }
+
+                respondText(ex, 200, "applied=$applied")
+            } catch (t: Throwable) {
+                respondText(ex, 500, "Server error: ${t.message}")
+            }
         }
 
         // GET /notes?after=ISO_INSTANT
@@ -106,6 +146,27 @@ class LocalSyncServer(
             noteRepo.save(remote)
             return true
         }
+        return false
+    }
+
+    private fun applyNotebook(remote: Notebook): Boolean {
+        val local = notebookRepo.findById(remote.id)
+
+        if (local == null) {
+            notebookRepo.save(remote)
+            return true
+        }
+
+        val shouldApply =
+            local.name != remote.name ||
+            local.parentId != remote.parentId ||
+            local.trashedAt != remote.trashedAt
+
+        if (shouldApply) {
+            notebookRepo.save(remote)
+            return true
+        }
+
         return false
     }
 
