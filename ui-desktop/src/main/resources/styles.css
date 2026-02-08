@@ -243,6 +243,27 @@
     -fx-background-color: rgba(15,23,42,0.55);
 }
 
+/* Leere TreeCells sollen wirklich "nichts" sein */
+.tree-cell:empty {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+/* Hover-Effekt auf leeren Bereichen deaktivieren */
+.tree-cell:empty:hover {
+    -fx-background-color: transparent;
+}
+
+/* (optional) falls selection/visuals dennoch greifen */
+.tree-cell:empty:selected {
+    -fx-background-color: transparent;
+}
+
+.tree-cell:empty .graphic {
+    -fx-padding: 0;
+    -fx-opacity: 0;
+}
+
 /* =========================================================
    TREEVIEW – CUSTOM FOLDER ICON SUPPORT
    ========================================================= */
@@ -386,6 +407,27 @@
 .root.dark .tree-cell:selected {
     -fx-background-color: rgba(70,120,255,0.22);
     -fx-text-fill: #ffffff;
+}
+
+/* Leere TreeCells sollen wirklich "nichts" sein */
+.root.dark .tree-cell:empty {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+/* Hover-Effekt auf leeren Bereichen deaktivieren */
+.root.dark .tree-cell:empty:hover {
+    -fx-background-color: transparent;
+}
+
+/* (optional) falls selection/visuals dennoch greifen */
+.root.dark .tree-cell:empty:selected {
+    -fx-background-color: transparent;
+}
+
+.root.dark .tree-cell:empty .graphic {
+    -fx-padding: 0;
+    -fx-opacity: 0;
 }
 
 /* SVG Icons Dark */
