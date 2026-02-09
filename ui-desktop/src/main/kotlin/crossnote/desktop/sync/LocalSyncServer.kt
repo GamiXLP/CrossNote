@@ -3,16 +3,15 @@ package crossnote.desktop.sync
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import crossnote.domain.note.Note
-import crossnote.domain.note.NoteId
 import crossnote.domain.note.NoteRepository
 import crossnote.domain.note.Notebook
-import crossnote.domain.note.NotebookRepository
 import crossnote.infra.persistence.SqliteNotebookRepository
 import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.time.Instant
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class LocalSyncServer(
@@ -20,6 +19,7 @@ class LocalSyncServer(
     private val noteRepo: NoteRepository
 ) {
     private var server: HttpServer? = null
+    private var executor: ExecutorService? = null
 
     fun start(port: Int) {
         if (server != null) return
@@ -91,7 +91,7 @@ class LocalSyncServer(
             }
         }
 
-        // POST /notes  (body = NoteWire lines)
+        // POST /notes/push (body = NoteWire lines)
         s.createContext("/notes/push") { ex ->
             try {
                 if (ex.requestMethod.uppercase() != "POST") {
@@ -113,14 +113,22 @@ class LocalSyncServer(
             }
         }
 
-        s.executor = Executors.newFixedThreadPool(4)
+        val exec = Executors.newFixedThreadPool(4)
+        s.executor = exec
+
         s.start()
         server = s
+        executor = exec
     }
 
     fun stop() {
+        // Stop accepting new requests
         server?.stop(0)
         server = null
+
+        // IMPORTANT: stop worker threads, otherwise JVM keeps running
+        executor?.shutdownNow()
+        executor = null
     }
 
     fun isRunning(): Boolean = server != null
@@ -139,8 +147,10 @@ class LocalSyncServer(
 
         val shouldApply =
             remote.updatedAt.isAfter(local.updatedAt) ||
-            (remote.updatedAt == local.updatedAt &&
-                (remote.title != local.title || remote.content != local.content || remote.trashedAt != local.trashedAt))
+                    (remote.updatedAt == local.updatedAt &&
+                            (remote.title != local.title ||
+                                    remote.content != local.content ||
+                                    remote.trashedAt != local.trashedAt))
 
         if (shouldApply) {
             noteRepo.save(remote)
@@ -159,8 +169,8 @@ class LocalSyncServer(
 
         val shouldApply =
             local.name != remote.name ||
-            local.parentId != remote.parentId ||
-            local.trashedAt != remote.trashedAt
+                    local.parentId != remote.parentId ||
+                    local.trashedAt != remote.trashedAt
 
         if (shouldApply) {
             notebookRepo.save(remote)
