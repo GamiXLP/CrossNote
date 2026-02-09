@@ -15,4 +15,22 @@ object Dialogs {
         val result = confirm.showAndWait()
         return result.isPresent && result.get() == ButtonType.OK
     }
+
+    fun info(title: String, content: String) {
+        Alert(Alert.AlertType.INFORMATION).apply {
+            this.title = title
+            headerText = null
+            contentText = content
+            buttonTypes.setAll(ButtonType.OK)
+        }.showAndWait()
+    }
+
+    fun error(title: String, content: String) {
+        Alert(Alert.AlertType.ERROR).apply {
+            this.title = title
+            headerText = null
+            contentText = content
+            buttonTypes.setAll(ButtonType.OK)
+        }.showAndWait()
+    }
 }

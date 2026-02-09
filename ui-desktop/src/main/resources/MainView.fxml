@@ -241,6 +241,17 @@
                                  content="M5 4h14l1 1v16H4V5z M8 4v6h8V4 M8 21v-7h8v7"/>
                     </graphic>
                 </Button>
+                <Button fx:id="BTNsync"
+                        styleClass="icon-pill"
+                        mnemonicParsing="false">
+                    <graphic>
+                        <!-- Cloud/Sync Icon -->
+                        <SVGPath styleClass="icon"
+                                content="M19 18H7a4 4 0 0 1 0-8 5 5 0 0 1 9.8-1.2A3.5 3.5 0 0 1 19 18z
+                                        M9 14l2 2l2-2
+                                        M11 16v-5"/>
+                    </graphic>
+                </Button>
             </HBox>
 
             <TextArea fx:id="contentArea"
