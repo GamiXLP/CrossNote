@@ -2,8 +2,10 @@ package crossnote.infra.persistence
 
 import crossnote.domain.note.Note
 import crossnote.domain.note.NoteId
+import crossnote.domain.note.NotebookId
 import crossnote.domain.note.NoteRepository
 import java.sql.Connection
+import java.sql.Types
 import java.time.Instant
 
 class SqliteNoteRepository(private val db: SqliteDatabase) : NoteRepository {
@@ -13,9 +15,18 @@ class SqliteNoteRepository(private val db: SqliteDatabase) : NoteRepository {
     override fun save(note: Note) {
         val sql =
             """
-            INSERT INTO notes(id, title, content, created_at, updated_at, trashed_at)
-            VALUES(?, ?, ?, ?, ?, ?)
+            INSERT INTO notes(
+                id,
+                notebook_id,
+                title,
+                content,
+                created_at,
+                updated_at,
+                trashed_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
+                notebook_id = excluded.notebook_id,
                 title = excluded.title,
                 content = excluded.content,
                 created_at = excluded.created_at,
@@ -23,19 +34,44 @@ class SqliteNoteRepository(private val db: SqliteDatabase) : NoteRepository {
                 trashed_at = excluded.trashed_at;
             """.trimIndent()
 
+        // ✅ Kein Smart-Cast über Modulgrenzen: einmal lokal ziehen
+        val nb: NotebookId? = note.notebookId
+
         conn().prepareStatement(sql).use { ps ->
             ps.setString(1, note.id.value)
-            ps.setString(2, note.title)
-            ps.setString(3, note.content)
-            ps.setString(4, note.createdAt.toString())
-            ps.setString(5, note.updatedAt.toString())
-            ps.setString(6, note.trashedAt?.toString())
+
+            // notebook_id: NULL = Root
+            if (nb != null) {
+                ps.setString(2, nb.value)
+            } else {
+                ps.setNull(2, Types.VARCHAR)
+            }
+
+            ps.setString(3, note.title)
+            ps.setString(4, note.content)
+            ps.setString(5, note.createdAt.toString())
+            ps.setString(6, note.updatedAt.toString())
+            ps.setString(7, note.trashedAt?.toString())
+
             ps.executeUpdate()
         }
     }
 
     override fun findById(id: NoteId): Note? {
-        val sql = "SELECT id, title, content, created_at, updated_at, trashed_at FROM notes WHERE id = ?;"
+        val sql =
+            """
+            SELECT
+                id,
+                notebook_id,
+                title,
+                content,
+                created_at,
+                updated_at,
+                trashed_at
+            FROM notes
+            WHERE id = ?;
+            """.trimIndent()
+
         conn().prepareStatement(sql).use { ps ->
             ps.setString(1, id.value)
             ps.executeQuery().use { rs ->
@@ -46,7 +82,19 @@ class SqliteNoteRepository(private val db: SqliteDatabase) : NoteRepository {
     }
 
     override fun findAll(): List<Note> {
-        val sql = "SELECT id, title, content, created_at, updated_at, trashed_at FROM notes;"
+        val sql =
+            """
+            SELECT
+                id,
+                notebook_id,
+                title,
+                content,
+                created_at,
+                updated_at,
+                trashed_at
+            FROM notes;
+            """.trimIndent()
+
         conn().prepareStatement(sql).use { ps ->
             ps.executeQuery().use { rs ->
                 val result = mutableListOf<Note>()
@@ -58,17 +106,98 @@ class SqliteNoteRepository(private val db: SqliteDatabase) : NoteRepository {
         }
     }
 
+    data class NoteSummary(val id: String, val title: String)
+
+    fun listRootNoteSummaries(): List<NoteSummary> {
+        val sql =
+            """
+            SELECT id, title
+            FROM notes
+            WHERE notebook_id IS NULL
+            AND trashed_at IS NULL
+            ORDER BY updated_at DESC;
+            """.trimIndent()
+
+        conn().prepareStatement(sql).use { ps ->
+            ps.executeQuery().use { rs ->
+                val result = mutableListOf<NoteSummary>()
+                while (rs.next()) {
+                    result.add(
+                        NoteSummary(
+                            id = rs.getString("id"),
+                            title = rs.getString("title")
+                        )
+                    )
+                }
+                return result
+            }
+        }
+    }
+
+    fun listNoteSummariesInNotebook(notebookId: NotebookId): List<NoteSummary> {
+        val sql =
+            """
+            SELECT id, title
+            FROM notes
+            WHERE notebook_id = ?
+            AND trashed_at IS NULL
+            ORDER BY updated_at DESC;
+            """.trimIndent()
+
+        conn().prepareStatement(sql).use { ps ->
+            ps.setString(1, notebookId.value)
+            ps.executeQuery().use { rs ->
+                val result = mutableListOf<NoteSummary>()
+                while (rs.next()) {
+                    result.add(
+                        NoteSummary(
+                            id = rs.getString("id"),
+                            title = rs.getString("title")
+                        )
+                    )
+                }
+                return result
+            }
+        }
+    }
+
+    fun setTrashedAt(id: NoteId, trashedAt: Instant?) {
+        val sql = "UPDATE notes SET trashed_at = ? WHERE id = ?;"
+        conn().prepareStatement(sql).use { ps ->
+            if (trashedAt == null) ps.setNull(1, Types.VARCHAR) else ps.setString(1, trashedAt.toString())
+            ps.setString(2, id.value)
+            ps.executeUpdate()
+        }
+    }
+
+    fun findNotebookIdOfNote(id: NoteId): NotebookId? {
+        val sql = "SELECT notebook_id FROM notes WHERE id = ?;"
+        conn().prepareStatement(sql).use { ps ->
+            ps.setString(1, id.value)
+            ps.executeQuery().use { rs ->
+                if (!rs.next()) return null
+                return rs.getString("notebook_id")?.let { NotebookId(it) }
+            }
+        }
+    }
+
     private fun mapNote(rs: java.sql.ResultSet): Note {
         val id = NoteId(rs.getString("id"))
+
+        val notebookIdStr = rs.getString("notebook_id")
+        val notebookId = if (notebookIdStr != null) NotebookId(notebookIdStr) else null
+
         val title = rs.getString("title")
         val content = rs.getString("content")
         val createdAt = Instant.parse(rs.getString("created_at"))
         val updatedAt = Instant.parse(rs.getString("updated_at"))
+
         val trashedAtStr = rs.getString("trashed_at")
         val trashedAt = trashedAtStr?.let { Instant.parse(it) }
 
         return Note(
             id = id,
+            notebookId = notebookId,
             title = title,
             content = content,
             createdAt = createdAt,

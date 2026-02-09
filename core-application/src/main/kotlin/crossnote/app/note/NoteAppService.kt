@@ -8,16 +8,37 @@ import java.util.UUID
 data class NoteSummaryDto(val id: String, val title: String)
 data class RevisionSummaryDto(val id: String, val createdAtIso: String)
 
+data class NotebookTreeDto(
+    val rootNotes: List<NoteSummaryDto>,
+    val notebooks: List<NotebookWithNotesDto>
+)
+
+data class NotebookWithNotesDto(
+    val id: String,
+    val name: String,
+    val notes: List<NoteSummaryDto>
+)
+
 class NoteAppService(
     private val repo: NoteRepository,
     private val revisionRepo: RevisionRepository,
     private val ids: IdGenerator,
     private val clock: Clock
 ) {
-    fun createNote(title: String, content: String): NoteId {
+
+    /**
+     * notebookId = null  -> Root-Notiz
+     * notebookId != null -> Notiz in Ordner
+     */
+    fun createNote(
+        title: String,
+        content: String,
+        notebookId: NotebookId? = null
+    ): NoteId {
         val now = clock.now()
         val note = Note(
             id = ids.newId(),
+            notebookId = notebookId,
             title = title.trim(),
             content = content,
             createdAt = now,
@@ -61,7 +82,7 @@ class NoteAppService(
             .asSequence()
             .filter { !it.isTrashed() }
             .sortedByDescending { it.updatedAt }
-            .map { NoteSummaryDto(it.id.value, it.title.ifBlank { "(Ohne Titel)" }) }
+            .map { it.toSummary() }
             .toList()
 
     fun listTrashedNotes(): List<NoteSummaryDto> =
@@ -69,7 +90,7 @@ class NoteAppService(
             .asSequence()
             .filter { it.isTrashed() }
             .sortedByDescending { it.updatedAt }
-            .map { NoteSummaryDto(it.id.value, it.title.ifBlank { "(Ohne Titel)" }) }
+            .map { it.toSummary() }
             .toList()
 
     // ---------- Revision Use-Cases ----------
@@ -118,7 +139,6 @@ class NoteAppService(
             error("Cannot permanently delete an active note (not in trash).")
         }
 
-        // Aufräumen von Revisionen (SQLite macht es zusätzlich per CASCADE)
         revisionRepo.deleteByNoteId(id)
         repo.deleteById(id)
     }
@@ -137,5 +157,84 @@ class NoteAppService(
             revisionRepo.deleteByNoteId(note.id)
             repo.deleteById(note.id)
         }
+    }
+
+    fun getRevision(id: RevisionId): Revision =
+        revisionRepo.findById(id) ?: error("Revision not found: ${id.value}")
+
+    fun clockNowForUi() = clock.now()
+
+    fun deleteRevision(revisionId: RevisionId) {
+        revisionRepo.deleteById(revisionId)
+    }
+
+    // ---------- Notebook / Tree Use-Cases ----------
+
+    /**
+     * Liefert die komplette Struktur für den TreeView:
+     * - Root-Notizen (notebookId == null) oben
+     * - Ordner alphabetisch
+     * - Notizen in Ordnern alphabetisch
+     */
+    fun listNotebookTree(
+        notebookRepo: NotebookRepository
+    ): NotebookTreeDto {
+
+        val allNotes = repo.findAll()
+            .filter { !it.isTrashed() }
+
+        // Root-Notizen (ohne Ordner)
+        val rootNotes =
+            allNotes
+                .filter { it.notebookId == null }
+                .sortedBy { it.title.lowercase() }
+                .map { it.toSummary() }
+
+        // Ordner + Notes
+        val notebooks =
+            notebookRepo.findAll()
+                .sortedBy { it.name.lowercase() }
+                .map { notebook ->
+                    val notesInNotebook =
+                        allNotes
+                            .filter { it.notebookId == notebook.id }
+                            .sortedBy { it.title.lowercase() }
+                            .map { it.toSummary() }
+
+                    NotebookWithNotesDto(
+                        id = notebook.id.value,
+                        name = notebook.name,
+                        notes = notesInNotebook
+                    )
+                }
+
+        return NotebookTreeDto(
+            rootNotes = rootNotes,
+            notebooks = notebooks
+        )
+    }
+
+    private fun Note.toSummary(): NoteSummaryDto =
+        NoteSummaryDto(
+            id = id.value,
+            title = title.ifBlank { "(Ohne Titel)" }
+        )
+    
+    fun createNotebook(name: String): NotebookId {
+        val trimmed = name.trim()
+        require(trimmed.isNotEmpty()) { "Notebook name must not be empty" }
+        return NotebookId(UUID.randomUUID().toString())
+    }
+
+    fun moveNoteToNotebook(noteId: NoteId, notebookId: NotebookId?) {
+        val note = repo.findById(noteId) ?: error("Note not found: ${noteId.value}")
+        if (note.isTrashed()) error("Cannot move trashed note.")
+
+        val now = clock.now()
+        val moved = note.copy(
+            notebookId = notebookId, // null = Root
+            updatedAt = now
+        )
+        repo.save(moved)
     }
 }
