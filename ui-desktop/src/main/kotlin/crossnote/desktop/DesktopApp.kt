@@ -1,23 +1,50 @@
 package crossnote.desktop
 
+import crossnote.desktop.controller.MainController
 import javafx.application.Application
+import javafx.application.Platform
 import javafx.fxml.FXMLLoader
 import javafx.scene.Scene
 import javafx.stage.Stage
 
 class DesktopApp : Application() {
 
-    override fun start(stage: Stage) {
+    private var mainController: MainController? = null
 
+    override fun start(stage: Stage) {
         val loader = FXMLLoader(
             DesktopApp::class.java.getResource("/MainView.fxml")
         )
 
         val root = loader.load<javafx.scene.Parent>()
 
+        // Controller merken, damit wir im stop() auch sauber schließen können
+        mainController = loader.getController()
+
         stage.scene = Scene(root, 1050.0, 700.0)
         stage.title = "CrossNote"
+
+        stage.setOnCloseRequest {
+            try {
+                mainController?.close()
+            } catch (t: Throwable) {
+                t.printStackTrace()
+            } finally {
+                // JavaFX sauber beenden
+                Platform.exit()
+            }
+        }
+
         stage.show()
+    }
+
+    override fun stop() {
+        // Fallback: wird bei Platform.exit() ebenfalls aufgerufen
+        try {
+            mainController?.close()
+        } catch (t: Throwable) {
+            t.printStackTrace()
+        }
     }
 }
 
