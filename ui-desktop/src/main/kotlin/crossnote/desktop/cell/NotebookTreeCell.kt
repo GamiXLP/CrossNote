@@ -7,6 +7,7 @@ import crossnote.desktop.util.NotebookTreeUtils
 import crossnote.domain.note.NoteId
 import crossnote.domain.note.NotebookId
 import crossnote.infra.persistence.SqliteNotebookRepository
+import crossnote.desktop.util.NotebookTreeUtils.createNoteIcon
 import javafx.beans.value.ChangeListener
 import javafx.scene.control.ContextMenu
 import javafx.scene.control.MenuItem
@@ -87,7 +88,7 @@ class NotebookTreeCell(
 
             is NavNode.NoteLeaf -> {
                 text = item.title
-                graphic = null
+                graphic = createNoteIcon()
             }
 
             is NavNode.RootHeader -> {

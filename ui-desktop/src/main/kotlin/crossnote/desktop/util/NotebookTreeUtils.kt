@@ -56,4 +56,26 @@ object NotebookTreeUtils {
             scaleY = 0.4
         }
     }
+
+    fun createNoteIcon(): Group {
+
+        val page = SVGPath().apply {
+            content =
+                "M45.17 15.176a4 4 0 0 0-2.828-1.171L24 14.003a4 4 0 0 0-4 4v44a4 4 0 0 0 4 4h32a4 4 0 0 0 4-4V31.66a4 4 0 0 0-1.172-2.83l-.2-.2c.459.527.09 1.37-.628 1.37H48a4 4 0 0 1-4-4V16c0-.71.826-1.08 1.353-.642z"
+
+            fill = javafx.scene.paint.Color.web("#f2c94c")
+        }
+
+        val corner = SVGPath().apply {
+            content =
+                "M58.586 28.586L45.414 15.414A.828.828 0 0 0 44 16v10a4 4 0 0 0 4 4h10a.828.828 0 0 0 .586-1.414"
+
+            fill = javafx.scene.paint.Color.web("#f2994a")
+        }
+
+        return Group(page, corner).apply {
+            scaleX = 0.4
+            scaleY = 0.4
+        }
+    }
 }
