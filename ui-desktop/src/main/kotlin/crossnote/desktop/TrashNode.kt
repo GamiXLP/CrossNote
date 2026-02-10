@@ -10,7 +10,7 @@ sealed class TrashNode {
 
     fun displayText(): String = when (this) {
         Root -> "Papierkorb"
-        is FolderBranch -> "📁 $name"
-        is NoteLeaf -> "📝 $title"
+        is FolderBranch -> name
+        is NoteLeaf -> title
     }
 }

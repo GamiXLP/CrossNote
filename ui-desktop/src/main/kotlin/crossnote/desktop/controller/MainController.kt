@@ -25,6 +25,8 @@ import crossnote.infra.persistence.SqliteRevisionRepository
 import crossnote.infra.persistence.SqliteSettingsRepository
 import crossnote.infra.persistence.SystemClock
 import crossnote.infra.persistence.UuidIdGenerator
+import crossnote.desktop.util.NotebookTreeUtils
+import javafx.scene.Node
 import java.nio.file.Paths
 import javafx.application.Platform
 import javafx.beans.binding.Bindings
@@ -209,10 +211,72 @@ class MainController {
 
         TVtrashcan.setCellFactory {
             object : TreeCell<TrashNode>() {
+
+                private var expandedListener: javafx.beans.value.ChangeListener<Boolean>? = null
+                private var listenedTreeItem: TreeItem<TrashNode>? = null
+
                 override fun updateItem(item: TrashNode?, empty: Boolean) {
+                    // Wichtig: erst cleanup vom alten TreeItem
+                    expandedListener?.let { l ->
+                        listenedTreeItem?.expandedProperty()?.removeListener(l)
+                    }
+                    expandedListener = null
+                    listenedTreeItem = null
+
                     super.updateItem(item, empty)
-                    text = if (empty || item == null) "" else item.displayText()
-                    contextMenu = if (empty || item == null) null else trashPresenter.buildContextMenu(item)
+
+                    if (empty || item == null) {
+                        text = ""
+                        graphic = null
+                        contextMenu = null
+                        return
+                    }
+
+                    text = item.displayText()
+                    contextMenu = trashPresenter.buildContextMenu(item)
+
+                    when (item) {
+                        is TrashNode.FolderBranch -> {
+                            val ti = treeItem ?: return
+
+                            fun buildIcon(expanded: Boolean) =
+                                if (expanded)
+                                    NotebookTreeUtils.createOpenFolderIcon()
+                                else
+                                    NotebookTreeUtils.createClosedFolderIcon()
+
+                            fun updateIcon() {
+                                val icon = buildIcon(ti.isExpanded)
+
+                                // ✅ GENAU WIE IM NOTEBOOK TREE: Klick auf Icon toggelt Expand
+                                icon.setOnMouseClicked { e ->
+                                    ti.isExpanded = !ti.isExpanded
+                                    e.consume()
+                                }
+
+                                icon.opacity = 0.70
+                                graphic = icon
+                            }
+
+                            updateIcon()
+
+                            val l = javafx.beans.value.ChangeListener<Boolean> { _, _, _ ->
+                                updateIcon()
+                            }
+                            expandedListener = l
+                            ti.expandedProperty().addListener(l)
+                            listenedTreeItem = ti
+                        }
+
+                        is TrashNode.NoteLeaf -> {
+                            graphic = NotebookTreeUtils.createNoteIcon()
+                            graphic?.opacity = 0.75
+                        }
+
+                        TrashNode.Root -> {
+                            graphic = null
+                        }
+                    }
                 }
             }
         }

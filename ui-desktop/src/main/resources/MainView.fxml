@@ -144,8 +144,8 @@
                                        styleClass="search-field"/>
 
                             <TreeView fx:id="TVtrashcan"
-                                      styleClass="sidebar-list"
-                                      VBox.vgrow="ALWAYS"/>
+                                styleClass="sidebar-list trash-tree"
+                                VBox.vgrow="ALWAYS"/>
                         </VBox>
                     </children>
                 </AnchorPane>
