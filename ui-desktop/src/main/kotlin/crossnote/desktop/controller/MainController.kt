@@ -1,6 +1,7 @@
 package crossnote.desktop.controller
 
 import crossnote.app.note.NoteAppService
+import crossnote.app.sync.SyncService
 import crossnote.desktop.NavNode
 import crossnote.desktop.ThemeManager
 import crossnote.desktop.TrashNode
@@ -10,7 +11,12 @@ import crossnote.desktop.presenter.NoteEditorPresenter
 import crossnote.desktop.presenter.NotebookTreePresenter
 import crossnote.desktop.presenter.SavestatePresenter
 import crossnote.desktop.presenter.TrashPresenter
+import crossnote.desktop.sync.HttpSyncClient
+import crossnote.desktop.sync.LocalSyncServer
+import crossnote.desktop.sync.NoteWire
+import crossnote.desktop.sync.NotebookWire
 import crossnote.desktop.ui.UiStateController
+import crossnote.desktop.util.Dialogs
 import crossnote.domain.note.NoteId
 import crossnote.infra.persistence.SqliteDatabase
 import crossnote.infra.persistence.SqliteNoteRepository
@@ -19,24 +25,19 @@ import crossnote.infra.persistence.SqliteRevisionRepository
 import crossnote.infra.persistence.SqliteSettingsRepository
 import crossnote.infra.persistence.SystemClock
 import crossnote.infra.persistence.UuidIdGenerator
-import crossnote.app.sync.SyncService
-import crossnote.desktop.util.Dialogs
-import crossnote.desktop.sync.HttpSyncClient
-import crossnote.desktop.sync.LocalSyncServer
-import crossnote.desktop.sync.NoteWire
-import crossnote.desktop.sync.NotebookWire
-import java.time.Instant
-import javafx.scene.control.ButtonType
-import javafx.scene.control.CheckBox
-import javafx.scene.control.Dialog
-import javafx.scene.control.TextInputDialog
-import javafx.scene.layout.GridPane
-import javafx.geometry.Insets
-import javafx.scene.control.TextField as FxTextField
+import java.nio.file.Paths
+import javafx.application.Platform
+import javafx.beans.binding.Bindings
 import javafx.event.ActionEvent
 import javafx.fxml.FXML
+import javafx.geometry.Insets
+import javafx.geometry.Pos
 import javafx.scene.control.Button
+import javafx.scene.control.ButtonBar
+import javafx.scene.control.ButtonType
+import javafx.scene.control.CheckBox
 import javafx.scene.control.ContextMenu
+import javafx.scene.control.Dialog
 import javafx.scene.control.Label
 import javafx.scene.control.ListView
 import javafx.scene.control.MenuItem
@@ -46,7 +47,11 @@ import javafx.scene.control.TreeCell
 import javafx.scene.control.TreeItem
 import javafx.scene.control.TreeView
 import javafx.scene.layout.AnchorPane
-import java.nio.file.Paths
+import javafx.scene.layout.GridPane
+import javafx.scene.layout.HBox
+import javafx.scene.layout.Priority
+import javafx.scene.layout.Region
+import javafx.scene.control.TextField as FxTextField
 
 class MainController {
 
@@ -326,6 +331,7 @@ class MainController {
     private fun setupTheme() {
         themeManager = ThemeManager(settingsRepo, BTNdarkmode)
         themeManager.bindToSceneRoot()
+        Dialogs.init(themeManager)
     }
 
     // =========================================================
@@ -383,31 +389,73 @@ class MainController {
             add(enabled, 0, 0, 2, 1)
             add(serverMode, 0, 1, 2, 1)
 
-            add(javafx.scene.control.Label("Server Host:"), 0, 2)
+            add(Label("Server Host:"), 0, 2)
             add(hostField, 1, 2)
 
-            add(javafx.scene.control.Label("Port:"), 0, 3)
+            add(Label("Port:"), 0, 3)
             add(portField, 1, 3)
+        }
+
+        // --- Custom Footer Buttons (volle Breite, alle gleich breit) ---
+        val btnApply = Button("Apply")
+        val btnCancel = Button("Cancel")
+        val btnSyncNow = Button("Sync now")
+
+        // Default-/Cancel-Behavior wie Dialog-Buttons
+        btnSyncNow.isDefaultButton = true
+        btnCancel.isCancelButton = true
+
+        val footer = HBox(12.0, btnApply, btnCancel, btnSyncNow).apply {
+            alignment = Pos.CENTER
+            padding = Insets(12.0, 16.0, 0.0, 16.0)
+
+            // Buttons sollen die ganze Zeile füllen und gleich breit sein
+            children.forEach { node ->
+                if (node is Button) {
+                    node.minWidth = 0.0
+                    node.maxWidth = Double.MAX_VALUE
+                    HBox.setHgrow(node, Priority.ALWAYS)
+                }
+            }
+        }
+
+        // Content = Grid + Footer untereinander
+        val content = javafx.scene.layout.VBox(10.0, grid, footer).apply {
+            padding = Insets(0.0)
         }
 
         val dialog = Dialog<ButtonType>().apply {
             title = "Synchronisation"
             headerText = "Server auswählen oder diesen Rechner als Server nutzen"
-            dialogPane.content = grid
+            dialogPane.content = content
 
-            val btnSyncNow = ButtonType("Jetzt synchronisieren", ButtonType.OK.buttonData)
-            dialogPane.buttonTypes.addAll(btnSyncNow, ButtonType.APPLY, ButtonType.CANCEL)
+            // WICHTIG: ButtonBar komplett deaktivieren, sonst mischt der Skin wieder rein.
+            dialogPane.buttonTypes.clear()
+            dialogPane.padding = Insets(0.0)
         }
 
-        val result = dialog.showAndWait()
-        if (result.isEmpty) return
+        dialog.setOnShown {
+            // Native ButtonBar ausblenden (falls sie noch Platz reserviert)
+            val nativeButtonBar = dialog.dialogPane.lookup(".button-bar")
+            nativeButtonBar?.isManaged = false
+            nativeButtonBar?.isVisible = false
 
-        // Speichern, wenn APPLY oder SyncNow gedrückt wurde
-        if (result.get() == ButtonType.APPLY || result.get().text == "Jetzt synchronisieren") {
+            // X schließen: am echten Window (Stage) hängen
+            val window = dialog.dialogPane.scene.window
+            window.setOnCloseRequest {
+                dialog.setResult(ButtonType.CANCEL)
+                // wichtig: Dialog wirklich schließen
+                dialog.close()
+            }
+        }
+
+        themeManager.register(dialog)
+
+        fun validateAndSave(): Boolean {
             val port = portField.text.trim().toIntOrNull()
             if (port == null || port <= 0 || port > 65535) {
                 Dialogs.error("Synchronisation", "Ungültiger Port: '${portField.text}'")
-                return
+                return false
             }
 
             val newCfg = cfg.copy(
@@ -417,14 +465,38 @@ class MainController {
                 port = port
             )
             syncService.saveConfig(newCfg)
+            return true
         }
 
+        btnApply.setOnAction {
+            if (validateAndSave()) {
+                dialog.setResult(ButtonType.APPLY)
+                dialog.close()
+            }
+        }
 
-        // SyncNow gedrückt
-        if (result.get().text == "Jetzt synchronisieren") {
-            doSyncNow()
+        btnCancel.setOnAction {
+            dialog.setResult(ButtonType.CANCEL)
+            dialog.close()
+        }
+
+        btnSyncNow.setOnAction {
+            if (validateAndSave()) {
+                dialog.setResult(ButtonType.OK)
+                dialog.close()
+            }
+        }
+
+        val result = dialog.showAndWait()
+        if (result.isEmpty) return
+
+        when (result.get()) {
+            ButtonType.OK -> doSyncNow()
+            // APPLY speichert nur, CANCEL macht nichts
+            else -> {}
         }
     }
+
 
     private fun doSyncNow() {
         val cfg = syncService.loadConfig()
@@ -458,9 +530,9 @@ class MainController {
                 val local = notebookRepo.findById(remote.id)
                 val shouldApply =
                     local == null ||
-                    local.name != remote.name ||
-                    local.parentId != remote.parentId ||
-                    local.trashedAt != remote.trashedAt
+                        local.name != remote.name ||
+                        local.parentId != remote.parentId ||
+                        local.trashedAt != remote.trashedAt
 
                 if (shouldApply) {
                     notebookRepo.save(remote)
@@ -472,6 +544,7 @@ class MainController {
             val localNbs = notebookRepo.findAll()
             val nbPushBody = NotebookWire.encodeLines(localNbs)
             val nbPushResult = syncClient.pushNotebooks(cfg.host, cfg.port, nbPushBody)
+
             // 1) PULL
             val pulledBody = syncClient.pullNotes(cfg.host, cfg.port, after = null)
             val pulledNotes = NoteWire.decodeLines(pulledBody)
@@ -481,9 +554,9 @@ class MainController {
                 val local = noteRepo.findById(remote.id)
                 val shouldApply =
                     local == null ||
-                    remote.updatedAt.isAfter(local.updatedAt) ||
-                    (remote.updatedAt == local.updatedAt &&
-                        (remote.title != local.title || remote.content != local.content || remote.trashedAt != local.trashedAt))
+                        remote.updatedAt.isAfter(local.updatedAt) ||
+                        (remote.updatedAt == local.updatedAt &&
+                            (remote.title != local.title || remote.content != local.content || remote.trashedAt != local.trashedAt))
 
                 if (shouldApply) {
                     noteRepo.save(remote)
@@ -491,7 +564,7 @@ class MainController {
                 }
             }
 
-            // 2) PUSH (alle lokalen Notes nach lastPushedAt)
+            // 2) PUSH (alle lokalen Notes)
             val localChanged = noteRepo.findAll()
             val pushBody = NoteWire.encodeLines(localChanged)
             val pushResult = syncClient.pushNotes(cfg.host, cfg.port, pushBody)
@@ -501,11 +574,11 @@ class MainController {
             trashPresenter.refresh()
 
             Dialogs.info(
-            "Synchronisation",
-            "Notebooks Pull: erhalten=${remoteNbs.size}, übernommen=$nbApplied\n" +
-            "Notebooks Push: gesendet=${localNbs.size}, Server: $nbPushResult\n\n" +
-            "Notes Pull: erhalten=${pulledNotes.size}, übernommen=$pulledApplied\n" +
-            "Notes Push: gesendet=${localChanged.size}, Server: $pushResult"
+                "Synchronisation",
+                "Notebooks Pull: erhalten=${remoteNbs.size}, übernommen=$nbApplied\n" +
+                    "Notebooks Push: gesendet=${localNbs.size}, Server: $nbPushResult\n\n" +
+                    "Notes Pull: erhalten=${pulledNotes.size}, übernommen=$pulledApplied\n" +
+                    "Notes Push: gesendet=${localChanged.size}, Server: $pushResult"
             )
         } catch (t: Throwable) {
             Dialogs.error("Synchronisation", "Sync fehlgeschlagen: ${t.message}")

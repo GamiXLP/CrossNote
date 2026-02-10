@@ -21,7 +21,10 @@ class DesktopApp : Application() {
         // Controller merken, damit wir im stop() auch sauber schließen können
         mainController = loader.getController()
 
-        stage.scene = Scene(root, 1050.0, 700.0)
+        val scene = Scene(root, 1050.0, 700.0)
+        scene.stylesheets.add(DesktopApp::class.java.getResource("/styles.css")!!.toExternalForm())
+        stage.scene = scene
+
         stage.title = "CrossNote"
 
         stage.setOnCloseRequest {
