@@ -106,6 +106,7 @@ class MainController {
     @FXML lateinit var BTNdarkmode: Button
     @FXML lateinit var BTNsave: Button
     @FXML lateinit var BTNsync: Button
+    @FXML lateinit var BTNemptyTrash: Button
 
     // ---------- Editor ----------
     @FXML lateinit var titleField: TextField
@@ -166,6 +167,7 @@ class MainController {
             contentArea = contentArea
         )
         uiState.showNotebooks()
+        //uiState.bindTrashActionButton(BTNemptyTrash)
     }
 
     private fun initEditor() {
@@ -372,9 +374,13 @@ class MainController {
 
             if (uiState.isTrashVisible()) {
                 uiState.showNotebooks()
+                BTNemptyTrash.isVisible = false
+                BTNemptyTrash.isManaged = false
                 notebookTreePresenter.refresh()
             } else {
                 uiState.showTrash()
+                BTNemptyTrash.isVisible = true
+                BTNemptyTrash.isManaged = true
                 trashPresenter.refresh()
             }
         }
@@ -390,7 +396,35 @@ class MainController {
         BTNsync.setOnAction {
             openSyncSettingsDialog()
         }
+
+        BTNemptyTrash.setOnAction {
+            val alert = javafx.scene.control.Alert(
+                javafx.scene.control.Alert.AlertType.CONFIRMATION
+            ).apply {
+                title = "Papierkorb leeren"
+                headerText = "Papierkorb wirklich endgültig leeren?"
+                contentText = "Alle Notizen und Ordner im Papierkorb werden unwiderruflich gelöscht."
+                buttonTypes.setAll(ButtonType.CANCEL, ButtonType.OK)
+            }
+
+            themeManager.register(alert)
+
+            val result = alert.showAndWait()
+            if (result.isEmpty || result.get() != ButtonType.OK) return@setOnAction
+
+            emptyTrashNow()
+        }
     }
+
+    private fun emptyTrashNow() {
+        // TODO: echte Löschlogik
+        // z.B. trashPresenter.emptyTrash() oder service.purgeAllTrashed()
+
+        clearEditorAndSelections()
+        trashPresenter.refresh()
+        notebookTreePresenter.refresh()
+    }
+
 
     private fun setupTheme() {
         themeManager = ThemeManager(settingsRepo, BTNdarkmode)

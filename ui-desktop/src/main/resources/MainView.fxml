@@ -219,6 +219,18 @@
                                  content="M15 18l-6-6l6-6 M9 12h12"/>
                     </graphic>
                 </Button>
+
+                <Button fx:id="BTNemptyTrash"
+                        visible="false"
+                        managed="false"
+                        styleClass="icon-pill"
+                        mnemonicParsing="false">
+                    <graphic>
+                        <SVGPath styleClass="icon"
+                            content="M19.5 5.5l-0.402 6.506 M4.5 5.5l0.605 10.025c0.154 2.567 0.232 3.85 0.874 4.774 c0.317 0.456 0.726 0.842 1.2 1.131 c0.671 0.41 1.502 0.533 2.821 0.57 M20 15l-7 7 M20 22l-7-7 M3 5.5h18 M16.056 5.5l-0.683-1.408c-0.453-0.936-0.68-1.403-1.071-1.695 a2 2 0 0 0-0.275-0.172 C13.594 2 13.074 2 12.035 2 c-1.066 0-1.599 0-2.04 0.234 a2 2 0 0 0-0.278 0.18 c-0.395 0.303-0.616 0.788-1.058 1.757 L8.053 5.5"/>
+                    </graphic>
+                </Button>
+
             </HBox>
 
         </VBox>
