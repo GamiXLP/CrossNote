@@ -212,6 +212,43 @@ class TrashPresenter(
         onRefreshNotebooks()
     }
 
+    fun purgeAllPermanently() {
+        if (!Dialogs.confirm(
+                title = "Papierkorb leeren",
+                header = "Papierkorb wirklich endgültig leeren?",
+                content = "Alle Notizen und Ordner im Papierkorb werden dauerhaft entfernt und können nicht wiederhergestellt werden."
+            )
+        ) return
+
+        // 1) Alle trashed Notes endgültig löschen (Root + in Ordnern)
+        val trashedNoteIds = service.listTrashedNotes().map { NoteId(it.id) }
+        trashedNoteIds.forEach { service.purgeNotePermanently(it) }
+
+        // 2) Alle trashed Ordner bottom-up löschen
+        // findAllTrashed() gibt nur trashed Notebooks -> perfekt
+        val trashedNotebooks = notebookRepo.findAllTrashed()
+        if (trashedNotebooks.isNotEmpty()) {
+            val allIds = trashedNotebooks.map { it.id }.toSet()
+            val byId = trashedNotebooks.associateBy { it.id }
+
+            fun depth(id: NotebookId): Int {
+                val nb = byId[id] ?: return 0
+                val p = nb.parentId ?: return 0
+                // nur zählen, wenn Parent ebenfalls trashed ist (sonst ist das "Root" im Trash)
+                return if (allIds.contains(p)) 1 + depth(p) else 0
+            }
+
+            val deleteOrder = trashedNotebooks
+                .sortedByDescending { depth(it.id) }
+                .map { it.id }
+
+            deleteOrder.forEach { notebookRepo.delete(it) }
+        }
+
+        refresh()
+        onRefreshNotebooks()
+    }
+
     // ------------------------
     // Helpers
     // ------------------------
