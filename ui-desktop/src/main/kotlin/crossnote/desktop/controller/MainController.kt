@@ -167,7 +167,6 @@ class MainController {
             contentArea = contentArea
         )
         uiState.showNotebooks()
-        //uiState.bindTrashActionButton(BTNemptyTrash)
     }
 
     private fun initEditor() {
@@ -398,33 +397,10 @@ class MainController {
         }
 
         BTNemptyTrash.setOnAction {
-            val alert = javafx.scene.control.Alert(
-                javafx.scene.control.Alert.AlertType.CONFIRMATION
-            ).apply {
-                title = "Papierkorb leeren"
-                headerText = "Papierkorb wirklich endgültig leeren?"
-                contentText = "Alle Notizen und Ordner im Papierkorb werden unwiderruflich gelöscht."
-                buttonTypes.setAll(ButtonType.CANCEL, ButtonType.OK)
-            }
-
-            themeManager.register(alert)
-
-            val result = alert.showAndWait()
-            if (result.isEmpty || result.get() != ButtonType.OK) return@setOnAction
-
-            emptyTrashNow()
+            trashPresenter.purgeAllPermanently()
+            clearEditorAndSelections()
         }
     }
-
-    private fun emptyTrashNow() {
-        // TODO: echte Löschlogik
-        // z.B. trashPresenter.emptyTrash() oder service.purgeAllTrashed()
-
-        clearEditorAndSelections()
-        trashPresenter.refresh()
-        notebookTreePresenter.refresh()
-    }
-
 
     private fun setupTheme() {
         themeManager = ThemeManager(settingsRepo, BTNdarkmode)
