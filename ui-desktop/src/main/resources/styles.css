@@ -243,6 +243,26 @@
     -fx-background-color: rgba(15,23,42,0.55);
 }
 
+/* Trash Tree: Standard-Disclosure (Pfeil) wieder aktivieren */
+.trash-tree .tree-cell .tree-disclosure-node {
+    -fx-padding: 0 6 0 0;
+    -fx-min-width: 16;
+    -fx-pref-width: 16;
+    -fx-max-width: 16;
+    -fx-shape: null; /* Standard */
+}
+
+.trash-tree .tree-cell .tree-disclosure-node .arrow {
+    -fx-background-color: rgba(15,23,42,0.55);
+    -fx-shape: null; /* Standard */
+    -fx-padding: 4;
+}
+
+/* Darkmode Pfeil (optional, damit er sichtbar bleibt) */
+.root.dark .trash-tree .tree-cell .tree-disclosure-node .arrow {
+    -fx-background-color: rgba(229,231,235,0.85);
+}
+
 /* Leere TreeCells sollen wirklich "nichts" sein */
 .tree-cell:empty {
     -fx-background-color: transparent;
