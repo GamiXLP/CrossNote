@@ -474,3 +474,64 @@
 .theme-toggle .text {
     -fx-opacity: 0;
 }
+
+/* =========================================================
+   DARK MODE – DIALOGS / ALERTS
+   (Dialoge haben oft NICHT .root als Root-Node, daher an .dialog-pane.dark binden)
+   ========================================================= */
+
+/* DialogPane selbst wird bei uns "dark" (ThemeManager setzt die Klasse auf scene.root) */
+.dialog-pane.dark {
+    -fx-background-color: rgba(17,24,39,0.96);
+}
+
+/* Header (das weiße Feld) */
+.dialog-pane.dark .header-panel {
+    -fx-background-color: rgba(17,24,39,0.96);
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+
+    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-border-width: 0 0 1 0;
+}
+
+/* Header-Text */
+.dialog-pane.dark .header-panel .label {
+    -fx-text-fill: #e5e7eb;
+    -fx-font-weight: 600;
+}
+
+/* Content-Labels */
+.dialog-pane.dark .content .label,
+.dialog-pane.dark .label {
+    -fx-text-fill: #e5e7eb;
+}
+
+/* Checkbox-Text */
+.dialog-pane.dark .check-box {
+    -fx-text-fill: #e5e7eb;
+}
+
+/* Checkbox Box */
+.dialog-pane.dark .check-box .box {
+    -fx-background-color: rgba(255,255,255,0.08);
+    -fx-border-color: rgba(255,255,255,0.18);
+}
+
+/* Button-Bar */
+.dialog-pane.dark .button-bar {
+    -fx-background-color: rgba(17,24,39,0.96);
+}
+
+/* Buttons im Dialog */
+.dialog-pane.dark .button {
+    -fx-background-color: rgba(255,255,255,0.10);
+    -fx-text-fill: #e5e7eb;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-border-color: rgba(255,255,255,0.12);
+}
+
+.dialog-pane.dark .button:hover {
+    -fx-background-color: rgba(255,255,255,0.16);
+}
