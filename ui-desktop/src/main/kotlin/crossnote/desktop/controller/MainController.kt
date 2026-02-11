@@ -12,6 +12,7 @@ import crossnote.desktop.presenter.NotebookTreePresenter
 import crossnote.desktop.presenter.SavestatePresenter
 import crossnote.desktop.presenter.TrashPresenter
 import crossnote.desktop.sync.HttpSyncClient
+import crossnote.desktop.sync.LanServerScanner
 import crossnote.desktop.sync.LocalSyncServer
 import crossnote.desktop.sync.NoteWire
 import crossnote.desktop.sync.NotebookWire
@@ -86,19 +87,17 @@ class MainController {
         serverName = { "CrossNote (${System.getProperty("user.name")})" }
     )
 
+    // --------- LAN Discovery Fallback (Subnet Scan) ----------
+    private val lanScanner = LanServerScanner()
+
     private val localSyncServer: LocalSyncServer by lazy {
         LocalSyncServer(
             notebookRepo = notebookRepo,
             noteRepo = noteRepo,
             onDataChanged = {
-                // kommt aus HTTP-Worker-Thread -> UI-Thread erzwingen
                 Platform.runLater {
-                    if (::notebookTreePresenter.isInitialized) {
-                        notebookTreePresenter.refresh()
-                    }
-                    if (::trashPresenter.isInitialized) {
-                        trashPresenter.refresh()
-                    }
+                    if (::notebookTreePresenter.isInitialized) notebookTreePresenter.refresh()
+                    if (::trashPresenter.isInitialized) trashPresenter.refresh()
                 }
             }
         )
@@ -241,10 +240,7 @@ class MainController {
                 private var listenedTreeItem: TreeItem<TrashNode>? = null
 
                 override fun updateItem(item: TrashNode?, empty: Boolean) {
-                    // Wichtig: erst cleanup vom alten TreeItem
-                    expandedListener?.let { l ->
-                        listenedTreeItem?.expandedProperty()?.removeListener(l)
-                    }
+                    expandedListener?.let { l -> listenedTreeItem?.expandedProperty()?.removeListener(l) }
                     expandedListener = null
                     listenedTreeItem = null
 
@@ -270,22 +266,17 @@ class MainController {
 
                             fun updateIcon() {
                                 val icon = buildIcon(ti.isExpanded)
-
-                                // ✅ GENAU WIE IM NOTEBOOK TREE: Klick auf Icon toggelt Expand
                                 icon.setOnMouseClicked { e ->
                                     ti.isExpanded = !ti.isExpanded
                                     e.consume()
                                 }
-
                                 icon.opacity = 0.70
                                 graphic = icon
                             }
 
                             updateIcon()
 
-                            val l = javafx.beans.value.ChangeListener<Boolean> { _, _, _ ->
-                                updateIcon()
-                            }
+                            val l = javafx.beans.value.ChangeListener<Boolean> { _, _, _ -> updateIcon() }
                             expandedListener = l
                             ti.expandedProperty().addListener(l)
                             listenedTreeItem = ti
@@ -414,9 +405,7 @@ class MainController {
 
         BTNsave.setOnAction { onSave() }
 
-        BTNsync.setOnAction {
-            openSyncSettingsDialog()
-        }
+        BTNsync.setOnAction { openSyncSettingsDialog() }
 
         BTNemptyTrash.setOnAction {
             trashPresenter.purgeAllPermanently()
@@ -471,7 +460,6 @@ class MainController {
             val isServer = serverMode.isSelected
             hostField.isDisable = isServer
             hostField.opacity = if (isServer) 0.6 else 1.0
-            // port bleibt aktiv: auch Server braucht Port
         }
 
         serverMode.selectedProperty().addListener { _, _, _ -> applyServerModeUi() }
@@ -492,21 +480,17 @@ class MainController {
             add(portField, 1, 3)
         }
 
-        // --- Custom Footer Buttons (volle Breite, alle gleich breit) ---
         val btnFindServer = Button("Server finden")
         val btnApply = Button("Apply")
         val btnCancel = Button("Cancel")
         val btnSyncNow = Button("Sync now")
 
-        // Default-/Cancel-Behavior wie Dialog-Buttons
         btnSyncNow.isDefaultButton = true
         btnCancel.isCancelButton = true
 
         val footer = HBox(12.0, btnFindServer, btnApply, btnCancel, btnSyncNow).apply {
             alignment = Pos.CENTER
             padding = Insets(12.0, 16.0, 0.0, 16.0)
-
-            // Buttons sollen die ganze Zeile füllen und gleich breit sein
             children.forEach { node ->
                 if (node is Button) {
                     node.minWidth = 0.0
@@ -516,32 +500,24 @@ class MainController {
             }
         }
 
-        // Content = Grid + Footer untereinander
-        val content = javafx.scene.layout.VBox(10.0, grid, footer).apply {
-            padding = Insets(0.0)
-        }
+        val content = javafx.scene.layout.VBox(10.0, grid, footer).apply { padding = Insets(0.0) }
 
         val dialog = Dialog<ButtonType>().apply {
             title = "Synchronisation"
             headerText = "Server auswählen oder diesen Rechner als Server nutzen"
             dialogPane.content = content
-
-            // WICHTIG: ButtonBar komplett deaktivieren, sonst mischt der Skin wieder rein.
             dialogPane.buttonTypes.clear()
             dialogPane.padding = Insets(0.0)
         }
 
         dialog.setOnShown {
-            // Native ButtonBar ausblenden (falls sie noch Platz reserviert)
             val nativeButtonBar = dialog.dialogPane.lookup(".button-bar")
             nativeButtonBar?.isManaged = false
             nativeButtonBar?.isVisible = false
 
-            // X schließen: am echten Window (Stage) hängen
             val window = dialog.dialogPane.scene.window
             window.setOnCloseRequest {
                 dialog.setResult(ButtonType.CANCEL)
-                // wichtig: Dialog wirklich schließen
                 dialog.close()
             }
         }
@@ -565,32 +541,58 @@ class MainController {
             return true
         }
 
+        // ✅ Server finden: erst UDP, dann Subnet-Scan fallback
         btnFindServer.setOnAction {
+            val port = portField.text.trim().toIntOrNull()
+            if (port == null || port <= 0 || port > 65535) {
+                Dialogs.error("Server finden", "Ungültiger Port: '${portField.text}'")
+                return@setOnAction
+            }
+
             btnFindServer.isDisable = true
             val oldText = btnFindServer.text
             btnFindServer.text = "Suche..."
 
             Thread {
                 try {
-                    val servers = discoveryClient.discover(timeoutMs = 900)
-                    Platform.runLater {
-                        if (servers.isEmpty()) {
-                            Dialogs.info(
-                                "Server finden",
-                                "Kein Server im Netzwerk gefunden.\n" +
-                                        "Stelle sicher, dass der Server-Modus aktiv ist und ihr im gleichen WLAN/LAN seid."
-                            )
-                        } else {
-                            val s = servers.first()
+                    // 1) UDP Discovery (schnell, aber unzuverlässig in Hotspots)
+                    val udpFound = discoveryClient.discover(timeoutMs = 900)
+                    if (udpFound.isNotEmpty()) {
+                        val s = udpFound.first()
+                        Platform.runLater {
                             hostField.text = s.host
                             portField.text = s.httpPort.toString()
-                            Dialogs.info("Server gefunden", "Gefunden: ${s.name}\n${s.host}:${s.httpPort}")
+                            Dialogs.info("Server gefunden", "Gefunden (UDP): ${s.name}\n${s.host}:${s.httpPort}")
+                        }
+                        return@Thread
+                    }
+
+                    // 2) Fallback: Subnet Scan (HTTP /ping)
+                    val scanned = lanScanner.scanForServers(
+                        port = port,
+                        totalTimeoutMs = 2500,
+                        perHostTimeoutMs = 250,
+                        maxConcurrency = 64
+                    )
+
+                    Platform.runLater {
+                        if (scanned.isEmpty()) {
+                            Dialogs.info(
+                                "Server finden",
+                                "Kein Server gefunden.\n\n" +
+                                        "Hinweis: In vielen Hotspots ist UDP-Broadcast blockiert.\n" +
+                                        "Wenn /ping per IP klappt, sollte der Scan normalerweise etwas finden.\n" +
+                                        "Prüfe ggf. Windows-Firewall (UDP/Port) und ob Geräte wirklich im gleichen Subnetz sind."
+                            )
+                        } else {
+                            val s = scanned.first()
+                            hostField.text = s.host
+                            portField.text = s.httpPort.toString()
+                            Dialogs.info("Server gefunden", "Gefunden (Scan): ${s.name}\n${s.host}:${s.httpPort}")
                         }
                     }
                 } catch (t: Throwable) {
-                    Platform.runLater {
-                        Dialogs.error("Server finden", "Fehler bei der Suche: ${t.message}")
-                    }
+                    Platform.runLater { Dialogs.error("Server finden", "Fehler bei der Suche: ${t.message}") }
                 } finally {
                     Platform.runLater {
                         btnFindServer.isDisable = false
@@ -624,7 +626,6 @@ class MainController {
 
         when (result.get()) {
             ButtonType.OK -> doSyncNow()
-            // APPLY speichert nur, CANCEL macht nichts
             else -> {}
         }
     }
@@ -636,14 +637,12 @@ class MainController {
             return
         }
 
-        // Wenn dieser Rechner Server ist: nur starten/Status anzeigen (Client-Sync wäre sinnlos gegen sich selbst)
+        // SERVER MODE
         if (cfg.serverMode) {
             if (!localSyncServer.isRunning()) {
                 try {
                     localSyncServer.start(cfg.port)
-                    if (!discoveryServer.isRunning()) {
-                        discoveryServer.start()
-                    }
+                    if (!discoveryServer.isRunning()) discoveryServer.start()
                 } catch (t: Throwable) {
                     Dialogs.error("Synchronisation", "Server konnte nicht gestartet werden: ${t.message}")
                     return
@@ -655,7 +654,6 @@ class MainController {
 
         // CLIENT MODE: Pull + Push
         try {
-            // 0) NOTEBOOKS zuerst (sonst "verschwinden" Notes im Tree)
             val nbBody = syncClient.pullNotebooks(cfg.host, cfg.port)
             val remoteNbs = NotebookWire.decodeLines(nbBody)
 
@@ -674,12 +672,10 @@ class MainController {
                 }
             }
 
-            // Optional: Notebooks auch pushen (Full Sync)
             val localNbs = notebookRepo.findAll()
             val nbPushBody = NotebookWire.encodeLines(localNbs)
             val nbPushResult = syncClient.pushNotebooks(cfg.host, cfg.port, nbPushBody)
 
-            // 1) PULL
             val pulledBody = syncClient.pullNotes(cfg.host, cfg.port, after = null)
             val pulledNotes = NoteWire.decodeLines(pulledBody)
 
@@ -700,12 +696,10 @@ class MainController {
                 }
             }
 
-            // 2) PUSH (alle lokalen Notes)
             val localChanged = noteRepo.findAll()
             val pushBody = NoteWire.encodeLines(localChanged)
             val pushResult = syncClient.pushNotes(cfg.host, cfg.port, pushBody)
 
-            // 4) UI refresh
             notebookTreePresenter.refresh()
             trashPresenter.refresh()
 
@@ -726,9 +720,7 @@ class MainController {
         if (cfg.enabled && cfg.serverMode) {
             try {
                 localSyncServer.start(cfg.port)
-                if (!discoveryServer.isRunning()) {
-                    discoveryServer.start()
-                }
+                if (!discoveryServer.isRunning()) discoveryServer.start()
             } catch (t: Throwable) {
                 Dialogs.error("Synchronisation", "Server konnte nicht gestartet werden: ${t.message}")
             }
