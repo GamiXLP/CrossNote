@@ -481,6 +481,31 @@
     -fx-background-color: rgba(229,231,235,0.85);
 }
 
+/* ===== Dark: ListView Savestates (Hintergrund + Zellen) ===== */
+.root.dark .sidebar-list.list-view {
+    -fx-background-color: transparent;
+    -fx-control-inner-background: transparent;
+}
+
+.root.dark .sidebar-list.list-view .virtual-flow {
+    -fx-background-color: transparent;
+}
+
+.root.dark .sidebar-list.list-view .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: #e5e7eb;
+}
+
+.root.dark .sidebar-list.list-view .list-cell:hover {
+    -fx-background-color: rgba(255,255,255,0.08);
+}
+
+.root.dark .sidebar-list.list-view .list-cell:filled:selected {
+    -fx-background-color: rgba(70,120,255,0.22);
+    -fx-text-fill: #ffffff;
+    -fx-font-weight: 700;
+}
+
 /* Theme Toggle: niemals Text anzeigen */
 .theme-toggle {
     -fx-content-display: graphic-only;
@@ -537,7 +562,6 @@
 .root.dark .corner {
     -fx-background-color: transparent;
 }
-
 
 /* =========================================================
    DARK MODE – DIALOGS / ALERTS
