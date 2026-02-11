@@ -2,6 +2,7 @@ package crossnote.desktop.cell
 
 import crossnote.app.note.NoteAppService
 import crossnote.desktop.NavNode
+import crossnote.desktop.ThemeManager
 import crossnote.desktop.util.Dialogs
 import crossnote.desktop.util.NotebookTreeUtils
 import crossnote.domain.note.NoteId
@@ -21,6 +22,7 @@ import javafx.scene.input.TransferMode
 class NotebookTreeCell(
     private val service: NoteAppService,
     private val notebookRepo: SqliteNotebookRepository,
+    private val themeManager: ThemeManager,
     private val onRefreshTree: () -> Unit,
     private val onOpenNote: (noteId: String) -> Unit,
     private val onDeleteNote: (noteId: NoteId) -> Unit,
@@ -30,16 +32,11 @@ class NotebookTreeCell(
     private val onTrashNotebookRecursively: (notebookId: NotebookId) -> Unit,
 ) : TreeCell<NavNode>() {
 
-    // ---------- Expand listener handling ----------
     private var expandedListener: ChangeListener<Boolean>? = null
     private var listenedTreeItem: javafx.scene.control.TreeItem<NavNode>? = null
 
-    // =========================================================
-    // updateItem (Cell Reuse safe)
-    // =========================================================
     override fun updateItem(item: NavNode?, empty: Boolean) {
 
-        // Listener vom vorherigen TreeItem entfernen (wichtig!)
         expandedListener?.let { l ->
             listenedTreeItem?.expandedProperty()?.removeListener(l)
         }
@@ -62,15 +59,12 @@ class NotebookTreeCell(
                 val ti = treeItem ?: return
 
                 fun buildIcon(expanded: Boolean) =
-                    if (expanded)
-                        NotebookTreeUtils.createOpenFolderIcon()
-                    else
-                        NotebookTreeUtils.createClosedFolderIcon()
+                    if (expanded) NotebookTreeUtils.createOpenFolderIcon()
+                    else NotebookTreeUtils.createClosedFolderIcon()
 
                 fun updateIcon() {
                     val icon = buildIcon(ti.isExpanded)
 
-                    // Klick auf Icon toggelt Expand
                     icon.setOnMouseClicked { e ->
                         ti.isExpanded = !ti.isExpanded
                         e.consume()
@@ -98,12 +92,8 @@ class NotebookTreeCell(
         }
     }
 
-    // =========================================================
-    // Init – Drag & Context Menus
-    // =========================================================
     init {
 
-        // ---------- Drag start ----------
         setOnDragDetected { e ->
             if (isEmpty || item == null) return@setOnDragDetected
 
@@ -128,7 +118,6 @@ class NotebookTreeCell(
             }
         }
 
-        // ---------- Drag over ----------
         setOnDragOver { e: DragEvent ->
             if (isEmpty || item == null) return@setOnDragOver
 
@@ -142,7 +131,6 @@ class NotebookTreeCell(
             e.consume()
         }
 
-        // ---------- Drop ----------
         setOnDragDropped { e ->
             if (isEmpty || item == null) {
                 e.isDropCompleted = false
@@ -188,14 +176,13 @@ class NotebookTreeCell(
             e.consume()
         }
 
-        // ---------- Context menus ----------
         setOnContextMenuRequested { e ->
             if (isEmpty || item == null) return@setOnContextMenuRequested
 
             val node = item ?: return@setOnContextMenuRequested
             treeView?.selectionModel?.select(index)
 
-            contextMenu = when (node) {
+            val menu = when (node) {
 
                 is NavNode.NoteLeaf -> ContextMenu(
                     MenuItem("🗑 Notiz löschen").apply {
@@ -238,13 +225,14 @@ class NotebookTreeCell(
                 )
             }
 
+            // ✅ extrem wichtig: damit Toggle sofort wirkt und ohne Refresh stimmt
+            themeManager.register(menu)
+
+            contextMenu = menu
             e.consume()
         }
     }
 
-    // =========================================================
-    // Helpers
-    // =========================================================
     private fun canMoveFolder(folderId: NotebookId, targetParent: NotebookId?): Boolean {
         if (targetParent == null) return true
         if (targetParent == folderId) return false

@@ -32,6 +32,7 @@ import crossnote.infra.persistence.UuidIdGenerator
 import javafx.application.Platform
 import javafx.event.ActionEvent
 import javafx.fxml.FXML
+import javafx.event.EventHandler
 import javafx.geometry.Insets
 import javafx.geometry.Pos
 import javafx.scene.control.Button
@@ -42,11 +43,14 @@ import javafx.scene.control.Dialog
 import javafx.scene.control.Label
 import javafx.scene.control.ListView
 import javafx.scene.control.MenuItem
+import javafx.scene.control.SeparatorMenuItem
 import javafx.scene.control.TextArea
 import javafx.scene.control.TextField
+import javafx.scene.control.TextInputControl
 import javafx.scene.control.TreeCell
 import javafx.scene.control.TreeItem
 import javafx.scene.control.TreeView
+import javafx.scene.input.Clipboard
 import javafx.scene.layout.AnchorPane
 import javafx.scene.layout.GridPane
 import javafx.scene.layout.HBox
@@ -157,6 +161,7 @@ class MainController {
         service.purgeTrashedOlderThan(30)
 
         initUiState()
+        setupTheme()
         initEditor()
 
         setupTrashTree()
@@ -166,8 +171,8 @@ class MainController {
         setupNotebookActions()
         setupNotebookTreeUi()
 
+        setupEditorContextMenus()
         setupButtons()
-        setupTheme()
 
         applyInitialUiState()
 
@@ -220,6 +225,7 @@ class MainController {
         trashPresenter = TrashPresenter(
             service = service,
             notebookRepo = notebookRepo,
+            themeManager = themeManager,
             trashTree = TVtrashcan,
             searchField = TFtrashcan,
             trashRoot = trashRoot,
@@ -350,6 +356,7 @@ class MainController {
             NotebookTreeCell(
                 service = service,
                 notebookRepo = notebookRepo,
+                themeManager = themeManager,
                 onRefreshTree = { notebookTreePresenter.refresh() },
                 onOpenNote = { editor.openNote(it, false) },
                 onDeleteNote = { noteId ->
@@ -367,7 +374,7 @@ class MainController {
             )
         }
 
-        TVnotebook.contextMenu = ContextMenu(
+        val rootMenu = ContextMenu(
             MenuItem("➕ Ordner erstellen").apply {
                 setOnAction { notebookActions.createNotebookDialog(null) }
             },
@@ -378,6 +385,9 @@ class MainController {
                 }
             }
         )
+
+        themeManager.register(rootMenu)
+        TVnotebook.contextMenu = rootMenu
     }
 
     private fun setupButtons() {
@@ -404,7 +414,6 @@ class MainController {
         }
 
         BTNsave.setOnAction { onSave() }
-
         BTNsync.setOnAction { openSyncSettingsDialog() }
 
         BTNemptyTrash.setOnAction {
@@ -447,6 +456,62 @@ class MainController {
         LVsavestate.selectionModel.clearSelection()
     }
 
+    // =========================================================
+    // Editor ContextMenus (Title + Content)
+    // =========================================================
+    private fun setupEditorContextMenus() {
+
+        fun attachMenu(control: TextInputControl) {
+            val undo = MenuItem("Rückgängig").apply { setOnAction { control.undo() } }
+            val redo = MenuItem("Wiederholen").apply { setOnAction { control.redo() } }
+
+            val cut = MenuItem("Ausschneiden").apply { setOnAction { control.cut() } }
+            val copy = MenuItem("Kopieren").apply { setOnAction { control.copy() } }
+            val paste = MenuItem("Einfügen").apply { setOnAction { control.paste() } }
+            val del = MenuItem("Löschen").apply { setOnAction { control.replaceSelection("") } }
+            val all = MenuItem("Alles markieren").apply { setOnAction { control.selectAll() } }
+
+            val menu = ContextMenu(
+                undo, redo,
+                SeparatorMenuItem(),
+                cut, copy, paste, del,
+                SeparatorMenuItem(),
+                all
+            )
+
+            // 1) ThemeManager registrieren (setzt onShowing)
+            themeManager.register(menu)
+
+            // 2) Danach zusätzlich unseren Enable/Disable-Handler chainen
+            val prev = menu.onShowing
+            menu.onShowing = EventHandler { evt ->
+                prev?.handle(evt)
+
+                val hasSel = control.selection.length > 0
+                val editable = control.isEditable
+                val clipboardHas = Clipboard.getSystemClipboard().hasString()
+                val hasText = !control.text.isNullOrEmpty()
+
+                cut.isDisable = !editable || !hasSel
+                copy.isDisable = !hasSel
+                paste.isDisable = !editable || !clipboardHas
+                del.isDisable = !editable || !hasSel
+                all.isDisable = !hasText
+
+                undo.isDisable = !editable
+                redo.isDisable = !editable
+            }
+
+            control.contextMenu = menu
+        }
+
+        attachMenu(titleField)
+        attachMenu(contentArea)
+    }
+
+    // =========================================================
+    // Sync Settings Dialog
+    // =========================================================
     private fun openSyncSettingsDialog() {
         val cfg = syncService.loadConfig()
 
@@ -541,7 +606,6 @@ class MainController {
             return true
         }
 
-        // ✅ Server finden: erst UDP, dann Subnet-Scan fallback
         btnFindServer.setOnAction {
             val port = portField.text.trim().toIntOrNull()
             if (port == null || port <= 0 || port > 65535) {
@@ -555,7 +619,6 @@ class MainController {
 
             Thread {
                 try {
-                    // 1) UDP Discovery (schnell, aber unzuverlässig in Hotspots)
                     val udpFound = discoveryClient.discover(timeoutMs = 900)
                     if (udpFound.isNotEmpty()) {
                         val s = udpFound.first()
@@ -567,7 +630,6 @@ class MainController {
                         return@Thread
                     }
 
-                    // 2) Fallback: Subnet Scan (HTTP /ping)
                     val scanned = lanScanner.scanForServers(
                         port = port,
                         totalTimeoutMs = 2500,
@@ -637,7 +699,6 @@ class MainController {
             return
         }
 
-        // SERVER MODE
         if (cfg.serverMode) {
             if (!localSyncServer.isRunning()) {
                 try {
@@ -652,7 +713,6 @@ class MainController {
             return
         }
 
-        // CLIENT MODE: Pull + Push
         try {
             val nbBody = syncClient.pullNotebooks(cfg.host, cfg.port)
             val remoteNbs = NotebookWire.decodeLines(nbBody)

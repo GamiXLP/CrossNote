@@ -3,9 +3,11 @@ package crossnote.desktop
 import crossnote.domain.settings.getBoolean
 import crossnote.domain.settings.setBoolean
 import crossnote.infra.persistence.SqliteSettingsRepository
+import javafx.event.EventHandler
 import javafx.scene.Parent
 import javafx.scene.Scene
 import javafx.scene.control.Button
+import javafx.scene.control.ContextMenu
 import javafx.scene.control.Dialog
 import java.util.WeakHashMap
 
@@ -15,11 +17,8 @@ class ThemeManager(
 ) {
     private var darkMode: Boolean = settingsRepo.getBoolean("darkMode", false)
 
-    /**
-     * WeakHashMap: sobald eine Scene nicht mehr referenziert wird (Fenster zu),
-     * fliegt sie automatisch raus -> keine Leaks.
-     */
     private val scenes: MutableMap<Scene, Unit> = WeakHashMap()
+    private val contextMenus: MutableMap<ContextMenu, Unit> = WeakHashMap()
 
     private val globalStylesheetUrl: String =
         ThemeManager::class.java.getResource("/styles.css")!!.toExternalForm()
@@ -27,42 +26,74 @@ class ThemeManager(
     fun bindToSceneRoot() {
         updateToggleText()
 
-        // Sobald der Toggle-Button in einer Scene hängt, registrieren wir die Main-Scene
         toggleButton.sceneProperty().addListener { _, _, scene ->
-            if (scene != null) {
-                register(scene)
-            }
+            if (scene != null) register(scene)
         }
     }
 
-    /**
-     * Für normale Stages/Fenster: Scene registrieren + sofort Theme anwenden.
-     */
     fun register(scene: Scene) {
         ensureStylesheet(scene)
-
         scenes[scene] = Unit
-        apply(scene.root)
+        applyToRoot(scene.root)
 
-        // Falls root später gewechselt wird: Theme neu anwenden
         scene.rootProperty().addListener { _, _, newRoot ->
-            if (newRoot != null) apply(newRoot)
+            if (newRoot != null) applyToRoot(newRoot)
+        }
+    }
+
+    fun register(dialog: Dialog<*>) {
+        val pane = dialog.dialogPane
+        pane.scene?.let { register(it) }
+
+        pane.sceneProperty().addListener { _, _, newScene ->
+            if (newScene != null) register(newScene)
         }
     }
 
     /**
-     * Für Dialoge/Alerts: deren DialogPane hat eine eigene Scene, die oft erst kurz vor show() existiert.
+     * ContextMenu ist ein Popup mit eigener Scene + eigenem Root.
+     * WICHTIG: Dark-Klasse muss auf menu.scene.root, sonst bleibt der Hintergrund Modena-weiß.
      */
-    fun register(dialog: Dialog<*>) {
-        val pane = dialog.dialogPane
+    fun register(menu: ContextMenu) {
+        contextMenus[menu] = Unit
 
-        // Wenn Scene schon existiert: direkt registrieren
-        pane.scene?.let { register(it) }
+        val previous = menu.onShowing
+        menu.onShowing = EventHandler { ev ->
+            previous?.handle(ev)
 
-        // Sonst: sobald sie gesetzt wird, registrieren
-        pane.sceneProperty().addListener { _, _, newScene ->
-            if (newScene != null) {
-                register(newScene)
+            // Popup-Scene existiert erst beim Anzeigen
+            val popupScene = menu.scene ?: return@EventHandler
+            ensureStylesheet(popupScene)
+
+            applyToContextMenuPopup(menu)
+        }
+    }
+
+    private fun applyToContextMenuPopup(menu: ContextMenu) {
+        // 1) Menü selbst (zur Sicherheit)
+        if (darkMode) {
+            if (!menu.styleClass.contains("dark")) menu.styleClass.add("dark")
+        } else {
+            menu.styleClass.remove("dark")
+        }
+
+        // 2) Popup Root
+        val root = menu.scene?.root as? Parent ?: return
+        if (darkMode) {
+            if (!root.styleClass.contains("dark")) root.styleClass.add("dark")
+        } else {
+            root.styleClass.remove("dark")
+        }
+
+        // 3) **WICHTIG**: alle Nodes, die JavaFX als ".context-menu" rendert, ebenfalls togglen
+        // (damit egal welcher Container den Background trägt)
+        val contextMenuNodes = root.lookupAll(".context-menu")
+        for (n in contextMenuNodes) {
+            val p = n as? Parent ?: continue
+            if (darkMode) {
+                if (!p.styleClass.contains("dark")) p.styleClass.add("dark")
+            } else {
+                p.styleClass.remove("dark")
             }
         }
     }
@@ -71,13 +102,22 @@ class ThemeManager(
         darkMode = !darkMode
         settingsRepo.setBoolean("darkMode", darkMode)
 
-        // Alle registrierten Scenes updaten
         scenes.keys.forEach { scene ->
-            apply(scene.root)
+            applyToRoot(scene.root)
+        }
+
+        // ✅ alle bekannten ContextMenus ebenfalls aktualisieren
+        contextMenus.keys.forEach { menu ->
+            menu.scene?.let { ensureStylesheet(it) }
+            applyToPopupRoot(menu)
         }
 
         updateToggleText()
     }
+
+    // ----------------------------
+    // Internals
+    // ----------------------------
 
     private fun ensureStylesheet(scene: Scene) {
         val stylesheets = scene.stylesheets
@@ -90,11 +130,21 @@ class ThemeManager(
         toggleButton.text = if (darkMode) "Light Mode" else "Dark Mode"
     }
 
-    private fun apply(root: Parent) {
+    private fun applyToRoot(root: Parent) {
         if (darkMode) {
             if (!root.styleClass.contains("dark")) root.styleClass.add("dark")
         } else {
             root.styleClass.remove("dark")
+        }
+    }
+
+    private fun applyToPopupRoot(menu: ContextMenu) {
+        val popupRoot = menu.scene?.root as? Parent ?: return
+
+        if (darkMode) {
+            if (!popupRoot.styleClass.contains("dark")) popupRoot.styleClass.add("dark")
+        } else {
+            popupRoot.styleClass.remove("dark")
         }
     }
 }

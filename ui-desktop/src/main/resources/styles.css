@@ -337,52 +337,6 @@
 }
 
 /* =========================================================
-   LISTVIEW (SAVESTATES)  ✅ FIX: Hintergrund/Cells für Light+Dark
-   ========================================================= */
-
-/* Grundfläche ListView: transparent, damit die Card-Farbe durchscheint */
-.sidebar-list.list-view {
-    -fx-background-color: transparent;
-    -fx-background-insets: 0;
-    -fx-padding: 0;
-
-    /* DAS ist oft die weiße Fläche: */
-    -fx-control-inner-background: transparent;
-}
-
-/* VirtualFlow (innen) ebenfalls transparent */
-.sidebar-list.list-view .virtual-flow {
-    -fx-background-color: transparent;
-}
-
-/* Zellen */
-.sidebar-list.list-view .list-cell {
-    -fx-background-color: transparent;
-    -fx-text-fill: #0f172a;
-    -fx-padding: 8 10;
-    -fx-background-radius: 10;
-    -fx-border-radius: 10;
-    -fx-font-size: 13.2px;
-}
-
-/* Hover / Selected */
-.sidebar-list.list-view .list-cell:hover {
-    -fx-background-color: rgba(70,120,255,0.12);
-}
-
-.sidebar-list.list-view .list-cell:filled:selected {
-    -fx-background-color: rgba(70,120,255,0.20);
-    -fx-text-fill: #0f172a;
-    -fx-font-weight: 700;
-}
-
-/* Leere Zellen wirklich leer */
-.sidebar-list.list-view .list-cell:empty {
-    -fx-background-color: transparent;
-    -fx-padding: 0;
-}
-
-/* =========================================================
    SEPARATOR
    ========================================================= */
 .separator {
@@ -508,15 +462,10 @@
 
 /* ===== Dark: TextArea (Editor) wirklich dunkel machen ===== */
 .root.dark .note-content {
-    /* macht die innere Fläche dunkel (wichtig!) */
     -fx-control-inner-background: rgba(255,255,255,0.06);
-
-    /* je nach Skin wird auch das hier ausgewertet */
     -fx-background-color: rgba(255,255,255,0.06);
     -fx-text-fill: #e5e7eb;
     -fx-prompt-text-fill: rgba(229,231,235,0.45);
-
-    /* optional: gelbe "Papier"-Border im Darkmode etwas neutraler */
     -fx-border-color: rgba(255,255,255,0.14);
 }
 
@@ -529,7 +478,7 @@
 
 /* ===== Dark: Tree disclosure arrows sichtbar ===== */
 .root.dark .tree-cell .tree-disclosure-node .arrow {
-    -fx-background-color: rgba(229,231,235,0.85); /* hell, gut sichtbar */
+    -fx-background-color: rgba(229,231,235,0.85);
 }
 
 /* ===== Dark: ListView Savestates (Hintergrund + Zellen) ===== */
@@ -619,7 +568,6 @@
    (Dialoge haben oft NICHT .root als Root-Node, daher an .dialog-pane.dark binden)
    ========================================================= */
 
-/* DialogPane selbst wird bei uns "dark" (ThemeManager setzt die Klasse auf scene.root) */
 .dialog-pane.dark {
     -fx-background-color: rgba(17,24,39,0.96);
 }
@@ -673,4 +621,78 @@
 
 .dialog-pane.dark .button:hover {
     -fx-background-color: rgba(255,255,255,0.16);
+}
+
+/* =========================================================
+   DARK MODE – CONTEXT MENUS
+   ========================================================= */
+
+.context-menu.dark {
+    /* Outer shell (manchmal nicht das, was weiß ist) */
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+/* ✅ Das ist bei Modena sehr oft der "weiße Kasten" */
+.context-menu.dark .context-menu-content {
+    -fx-background-color: rgba(17,24,39,0.98);
+    -fx-background-insets: 0;
+    -fx-background-radius: 10;
+    -fx-padding: 6;
+
+    -fx-border-color: rgba(255,255,255,0.12);
+    -fx-border-width: 1;
+    -fx-border-radius: 10;
+
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.45), 18, 0.20, 0, 8);
+}
+
+/* ✅ Falls das Menu intern in einer ScrollPane steckt */
+.context-menu.dark .scroll-pane,
+.context-menu.dark .scroll-pane .viewport,
+.context-menu.dark .scroll-pane .content {
+    -fx-background-color: transparent;
+}
+
+/* MenuItems */
+.context-menu.dark .menu-item {
+    -fx-background-color: transparent;
+    -fx-padding: 8 12;
+}
+
+.context-menu.dark .menu-item .label {
+    -fx-text-fill: #e5e7eb;
+}
+
+.context-menu.dark .menu-item:focused,
+.context-menu.dark .menu-item:hover {
+    -fx-background-color: rgba(255,255,255,0.10);
+    -fx-background-radius: 8;
+}
+
+.context-menu.dark .menu-item:disabled .label {
+    -fx-text-fill: rgba(229,231,235,0.35);
+}
+
+/* Separator */
+.context-menu.dark .separator:horizontal .line {
+    -fx-border-color: rgba(255,255,255,0.12);
+    -fx-border-width: 1 0 0 0;
+}
+
+/* =========================================================
+   DARK MODE – CONTEXT MENUS (HARD OVERRIDE für innere Container)
+   ========================================================= */
+
+.context-menu.dark,
+.context-menu.dark .context-menu-content,
+.context-menu.dark .scroll-pane,
+.context-menu.dark .scroll-pane .viewport {
+    -fx-background-color: rgba(17,24,39,0.98);
+}
+
+/* falls JavaFX den Background über "background" statt background-color setzt */
+.context-menu.dark {
+    -fx-background-insets: 0;
+    -fx-background-radius: 10;
 }
