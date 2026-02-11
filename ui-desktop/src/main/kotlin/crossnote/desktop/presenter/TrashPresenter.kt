@@ -1,8 +1,9 @@
 package crossnote.desktop.presenter
 
 import crossnote.app.note.NoteAppService
-import crossnote.desktop.util.Dialogs
+import crossnote.desktop.ThemeManager
 import crossnote.desktop.TrashNode
+import crossnote.desktop.util.Dialogs
 import crossnote.domain.note.NoteId
 import crossnote.domain.note.NotebookId
 import crossnote.infra.persistence.SqliteNotebookRepository
@@ -17,6 +18,7 @@ import java.time.Duration
 class TrashPresenter(
     private val service: NoteAppService,
     private val notebookRepo: SqliteNotebookRepository,
+    private val themeManager: ThemeManager,
     private val trashTree: TreeView<TrashNode>,
     private val searchField: TextField,
     private val trashRoot: TreeItem<TrashNode>,
@@ -50,7 +52,6 @@ class TrashPresenter(
         val trashedNotebooks = notebookRepo.findAllTrashed()
         val trashedIds = trashedNotebooks.map { it.id }.toSet()
 
-        // Parent nur dann verwenden, wenn er auch getrasht ist, sonst auf null "hochziehen"
         val byParent = trashedNotebooks.groupBy { nb ->
             val p = nb.parentId
             if (p != null && trashedIds.contains(p)) p else null
@@ -105,8 +106,8 @@ class TrashPresenter(
         trashRoot.children.addAll(buildFolderTree(null) + rootNotes)
     }
 
-    fun buildContextMenu(node: TrashNode): ContextMenu =
-        when (node) {
+    fun buildContextMenu(node: TrashNode): ContextMenu {
+        val menu = when (node) {
             is TrashNode.NoteLeaf -> ContextMenu(
                 MenuItem("↺ Wiederherstellen").apply {
                     setOnAction {
@@ -133,9 +134,10 @@ class TrashPresenter(
             else -> ContextMenu()
         }
 
-    // ------------------------
-    // Actions
-    // ------------------------
+        // ✅ wichtig: damit Toggle sofort wirkt
+        themeManager.register(menu)
+        return menu
+    }
 
     private fun restoreTrashedNote(id: String) {
         val noteId = NoteId(id)
@@ -193,7 +195,6 @@ class TrashPresenter(
 
         val idsToDelete = collectSubtreeIds(rootId).toSet()
 
-        // notes permanently delete (only trashed notes in these folders)
         service.listTrashedNotes().forEach { summary ->
             val noteId = NoteId(summary.id)
             val full = service.getNote(noteId)
@@ -203,7 +204,6 @@ class TrashPresenter(
             }
         }
 
-        // folders bottom-up
         idsToDelete.toList().reversed().forEach { nbId ->
             notebookRepo.delete(nbId)
         }
@@ -220,12 +220,9 @@ class TrashPresenter(
             )
         ) return
 
-        // 1) Alle trashed Notes endgültig löschen (Root + in Ordnern)
         val trashedNoteIds = service.listTrashedNotes().map { NoteId(it.id) }
         trashedNoteIds.forEach { service.purgeNotePermanently(it) }
 
-        // 2) Alle trashed Ordner bottom-up löschen
-        // findAllTrashed() gibt nur trashed Notebooks -> perfekt
         val trashedNotebooks = notebookRepo.findAllTrashed()
         if (trashedNotebooks.isNotEmpty()) {
             val allIds = trashedNotebooks.map { it.id }.toSet()
@@ -234,7 +231,6 @@ class TrashPresenter(
             fun depth(id: NotebookId): Int {
                 val nb = byId[id] ?: return 0
                 val p = nb.parentId ?: return 0
-                // nur zählen, wenn Parent ebenfalls trashed ist (sonst ist das "Root" im Trash)
                 return if (allIds.contains(p)) 1 + depth(p) else 0
             }
 
@@ -248,10 +244,6 @@ class TrashPresenter(
         refresh()
         onRefreshNotebooks()
     }
-
-    // ------------------------
-    // Helpers
-    // ------------------------
 
     fun trashCountdownText(noteId: String): String {
         val note = service.getNote(NoteId(noteId))

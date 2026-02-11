@@ -42,6 +42,7 @@ import javafx.scene.control.Dialog
 import javafx.scene.control.Label
 import javafx.scene.control.ListView
 import javafx.scene.control.MenuItem
+import javafx.scene.control.SeparatorMenuItem
 import javafx.scene.control.TextArea
 import javafx.scene.control.TextField
 import javafx.scene.control.TreeCell
@@ -136,6 +137,10 @@ class MainController {
     @FXML lateinit var LBsaved: Label
     @FXML lateinit var LBtitleCount: Label
 
+    // ✅ Editor ContextMenus merken (damit wir sie beim Theme-Toggle "rebinden" können)
+    private var titleContextMenu: ContextMenu? = null
+    private var contentContextMenu: ContextMenu? = null
+
     // ---------- Roots ----------
     private val treeRoot = TreeItem<NavNode>(NavNode.RootHeader).apply { isExpanded = true }
     private val trashRoot = TreeItem<TrashNode>(TrashNode.Root).apply { isExpanded = true }
@@ -157,6 +162,7 @@ class MainController {
         service.purgeTrashedOlderThan(30)
 
         initUiState()
+        setupTheme()
         initEditor()
 
         setupTrashTree()
@@ -166,11 +172,10 @@ class MainController {
         setupNotebookActions()
         setupNotebookTreeUi()
 
+        setupEditorContextMenus()
         setupButtons()
-        setupTheme()
 
         applyInitialUiState()
-
         startServerIfEnabled()
     }
 
@@ -220,6 +225,7 @@ class MainController {
         trashPresenter = TrashPresenter(
             service = service,
             notebookRepo = notebookRepo,
+            themeManager = themeManager,
             trashTree = TVtrashcan,
             searchField = TFtrashcan,
             trashRoot = trashRoot,
@@ -287,9 +293,7 @@ class MainController {
                             graphic?.opacity = 0.75
                         }
 
-                        TrashNode.Root -> {
-                            graphic = null
-                        }
+                        TrashNode.Root -> graphic = null
                     }
                 }
             }
@@ -350,6 +354,7 @@ class MainController {
             NotebookTreeCell(
                 service = service,
                 notebookRepo = notebookRepo,
+                themeManager = themeManager,
                 onRefreshTree = { notebookTreePresenter.refresh() },
                 onOpenNote = { editor.openNote(it, false) },
                 onDeleteNote = { noteId ->
@@ -367,7 +372,7 @@ class MainController {
             )
         }
 
-        TVnotebook.contextMenu = ContextMenu(
+        val rootMenu = ContextMenu(
             MenuItem("➕ Ordner erstellen").apply {
                 setOnAction { notebookActions.createNotebookDialog(null) }
             },
@@ -378,6 +383,8 @@ class MainController {
                 }
             }
         )
+        themeManager.register(rootMenu)
+        TVnotebook.contextMenu = rootMenu
     }
 
     private fun setupButtons() {
@@ -404,7 +411,6 @@ class MainController {
         }
 
         BTNsave.setOnAction { onSave() }
-
         BTNsync.setOnAction { openSyncSettingsDialog() }
 
         BTNemptyTrash.setOnAction {
@@ -425,6 +431,9 @@ class MainController {
     @FXML
     fun darkmode_on(@Suppress("UNUSED_PARAMETER") e: ActionEvent) {
         themeManager.toggle()
+
+        // ✅ Wichtig: TextInputControl ContextMenus "rebinden", sonst bleiben sie im alten Theme hängen
+        rebindEditorContextMenus()
     }
 
     private fun openSavestatesFor(noteId: NoteId) {
@@ -445,6 +454,58 @@ class MainController {
         TVnotebook.selectionModel.clearSelection()
         TVtrashcan.selectionModel.clearSelection()
         LVsavestate.selectionModel.clearSelection()
+    }
+
+    /**
+     * ✅ JavaFX cached ContextMenu skin bei TextInputControls.
+     * Durch "null -> menu" wird es beim nächsten Öffnen korrekt neu aufgebaut.
+     */
+    private fun rebindEditorContextMenus() {
+        titleContextMenu?.let { menu ->
+            titleField.contextMenu = null
+            titleField.contextMenu = menu
+        }
+        contentContextMenu?.let { menu ->
+            contentArea.contextMenu = null
+            contentArea.contextMenu = menu
+        }
+    }
+
+    private fun setupEditorContextMenus() {
+        fun attachMenu(control: javafx.scene.control.TextInputControl): ContextMenu {
+            val menu = ContextMenu(
+                MenuItem("Rückgängig").apply { setOnAction { control.undo() } },
+                MenuItem("Wiederholen").apply { setOnAction { control.redo() } },
+                SeparatorMenuItem(),
+                MenuItem("Ausschneiden").apply { setOnAction { control.cut() } },
+                MenuItem("Kopieren").apply { setOnAction { control.copy() } },
+                MenuItem("Einfügen").apply { setOnAction { control.paste() } },
+                MenuItem("Löschen").apply { setOnAction { control.deleteText(control.selection) } },
+                SeparatorMenuItem(),
+                MenuItem("Alles markieren").apply { setOnAction { control.selectAll() } }
+            )
+
+            menu.setOnShowing {
+                val hasSel = control.selection.length > 0
+                val hasText = control.text?.isNotEmpty() == true
+                val clipboardHas = javafx.scene.input.Clipboard.getSystemClipboard().hasString()
+
+                menu.items[0].isDisable = !control.isUndoable
+                menu.items[1].isDisable = !control.isRedoable
+                menu.items[3].isDisable = !hasSel
+                menu.items[4].isDisable = !hasSel
+                menu.items[5].isDisable = !clipboardHas
+                menu.items[6].isDisable = !hasSel
+                menu.items[8].isDisable = !hasText
+            }
+
+            themeManager.register(menu)
+            control.contextMenu = menu
+            return menu
+        }
+
+        titleContextMenu = attachMenu(titleField)
+        contentContextMenu = attachMenu(contentArea)
     }
 
     private fun openSyncSettingsDialog() {
@@ -541,7 +602,6 @@ class MainController {
             return true
         }
 
-        // ✅ Server finden: erst UDP, dann Subnet-Scan fallback
         btnFindServer.setOnAction {
             val port = portField.text.trim().toIntOrNull()
             if (port == null || port <= 0 || port > 65535) {
@@ -555,7 +615,6 @@ class MainController {
 
             Thread {
                 try {
-                    // 1) UDP Discovery (schnell, aber unzuverlässig in Hotspots)
                     val udpFound = discoveryClient.discover(timeoutMs = 900)
                     if (udpFound.isNotEmpty()) {
                         val s = udpFound.first()
@@ -567,7 +626,6 @@ class MainController {
                         return@Thread
                     }
 
-                    // 2) Fallback: Subnet Scan (HTTP /ping)
                     val scanned = lanScanner.scanForServers(
                         port = port,
                         totalTimeoutMs = 2500,
@@ -637,7 +695,6 @@ class MainController {
             return
         }
 
-        // SERVER MODE
         if (cfg.serverMode) {
             if (!localSyncServer.isRunning()) {
                 try {
@@ -652,7 +709,6 @@ class MainController {
             return
         }
 
-        // CLIENT MODE: Pull + Push
         try {
             val nbBody = syncClient.pullNotebooks(cfg.host, cfg.port)
             val remoteNbs = NotebookWire.decodeLines(nbBody)
