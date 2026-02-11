@@ -32,6 +32,7 @@ import crossnote.infra.persistence.UuidIdGenerator
 import javafx.application.Platform
 import javafx.event.ActionEvent
 import javafx.fxml.FXML
+import javafx.event.EventHandler
 import javafx.geometry.Insets
 import javafx.geometry.Pos
 import javafx.scene.control.Button
@@ -45,9 +46,11 @@ import javafx.scene.control.MenuItem
 import javafx.scene.control.SeparatorMenuItem
 import javafx.scene.control.TextArea
 import javafx.scene.control.TextField
+import javafx.scene.control.TextInputControl
 import javafx.scene.control.TreeCell
 import javafx.scene.control.TreeItem
 import javafx.scene.control.TreeView
+import javafx.scene.input.Clipboard
 import javafx.scene.layout.AnchorPane
 import javafx.scene.layout.GridPane
 import javafx.scene.layout.HBox
@@ -137,10 +140,6 @@ class MainController {
     @FXML lateinit var LBsaved: Label
     @FXML lateinit var LBtitleCount: Label
 
-    // ✅ Editor ContextMenus merken (damit wir sie beim Theme-Toggle "rebinden" können)
-    private var titleContextMenu: ContextMenu? = null
-    private var contentContextMenu: ContextMenu? = null
-
     // ---------- Roots ----------
     private val treeRoot = TreeItem<NavNode>(NavNode.RootHeader).apply { isExpanded = true }
     private val trashRoot = TreeItem<TrashNode>(TrashNode.Root).apply { isExpanded = true }
@@ -176,6 +175,7 @@ class MainController {
         setupButtons()
 
         applyInitialUiState()
+
         startServerIfEnabled()
     }
 
@@ -293,7 +293,9 @@ class MainController {
                             graphic?.opacity = 0.75
                         }
 
-                        TrashNode.Root -> graphic = null
+                        TrashNode.Root -> {
+                            graphic = null
+                        }
                     }
                 }
             }
@@ -383,6 +385,7 @@ class MainController {
                 }
             }
         )
+
         themeManager.register(rootMenu)
         TVnotebook.contextMenu = rootMenu
     }
@@ -431,9 +434,6 @@ class MainController {
     @FXML
     fun darkmode_on(@Suppress("UNUSED_PARAMETER") e: ActionEvent) {
         themeManager.toggle()
-
-        // ✅ Wichtig: TextInputControl ContextMenus "rebinden", sonst bleiben sie im alten Theme hängen
-        rebindEditorContextMenus()
     }
 
     private fun openSavestatesFor(noteId: NoteId) {
@@ -456,58 +456,62 @@ class MainController {
         LVsavestate.selectionModel.clearSelection()
     }
 
-    /**
-     * ✅ JavaFX cached ContextMenu skin bei TextInputControls.
-     * Durch "null -> menu" wird es beim nächsten Öffnen korrekt neu aufgebaut.
-     */
-    private fun rebindEditorContextMenus() {
-        titleContextMenu?.let { menu ->
-            titleField.contextMenu = null
-            titleField.contextMenu = menu
-        }
-        contentContextMenu?.let { menu ->
-            contentArea.contextMenu = null
-            contentArea.contextMenu = menu
-        }
-    }
-
+    // =========================================================
+    // Editor ContextMenus (Title + Content)
+    // =========================================================
     private fun setupEditorContextMenus() {
-        fun attachMenu(control: javafx.scene.control.TextInputControl): ContextMenu {
+
+        fun attachMenu(control: TextInputControl) {
+            val undo = MenuItem("Rückgängig").apply { setOnAction { control.undo() } }
+            val redo = MenuItem("Wiederholen").apply { setOnAction { control.redo() } }
+
+            val cut = MenuItem("Ausschneiden").apply { setOnAction { control.cut() } }
+            val copy = MenuItem("Kopieren").apply { setOnAction { control.copy() } }
+            val paste = MenuItem("Einfügen").apply { setOnAction { control.paste() } }
+            val del = MenuItem("Löschen").apply { setOnAction { control.replaceSelection("") } }
+            val all = MenuItem("Alles markieren").apply { setOnAction { control.selectAll() } }
+
             val menu = ContextMenu(
-                MenuItem("Rückgängig").apply { setOnAction { control.undo() } },
-                MenuItem("Wiederholen").apply { setOnAction { control.redo() } },
+                undo, redo,
                 SeparatorMenuItem(),
-                MenuItem("Ausschneiden").apply { setOnAction { control.cut() } },
-                MenuItem("Kopieren").apply { setOnAction { control.copy() } },
-                MenuItem("Einfügen").apply { setOnAction { control.paste() } },
-                MenuItem("Löschen").apply { setOnAction { control.deleteText(control.selection) } },
+                cut, copy, paste, del,
                 SeparatorMenuItem(),
-                MenuItem("Alles markieren").apply { setOnAction { control.selectAll() } }
+                all
             )
 
-            menu.setOnShowing {
-                val hasSel = control.selection.length > 0
-                val hasText = control.text?.isNotEmpty() == true
-                val clipboardHas = javafx.scene.input.Clipboard.getSystemClipboard().hasString()
+            // 1) ThemeManager registrieren (setzt onShowing)
+            themeManager.register(menu)
 
-                menu.items[0].isDisable = !control.isUndoable
-                menu.items[1].isDisable = !control.isRedoable
-                menu.items[3].isDisable = !hasSel
-                menu.items[4].isDisable = !hasSel
-                menu.items[5].isDisable = !clipboardHas
-                menu.items[6].isDisable = !hasSel
-                menu.items[8].isDisable = !hasText
+            // 2) Danach zusätzlich unseren Enable/Disable-Handler chainen
+            val prev = menu.onShowing
+            menu.onShowing = EventHandler { evt ->
+                prev?.handle(evt)
+
+                val hasSel = control.selection.length > 0
+                val editable = control.isEditable
+                val clipboardHas = Clipboard.getSystemClipboard().hasString()
+                val hasText = !control.text.isNullOrEmpty()
+
+                cut.isDisable = !editable || !hasSel
+                copy.isDisable = !hasSel
+                paste.isDisable = !editable || !clipboardHas
+                del.isDisable = !editable || !hasSel
+                all.isDisable = !hasText
+
+                undo.isDisable = !editable
+                redo.isDisable = !editable
             }
 
-            themeManager.register(menu)
             control.contextMenu = menu
-            return menu
         }
 
-        titleContextMenu = attachMenu(titleField)
-        contentContextMenu = attachMenu(contentArea)
+        attachMenu(titleField)
+        attachMenu(contentArea)
     }
 
+    // =========================================================
+    // Sync Settings Dialog
+    // =========================================================
     private fun openSyncSettingsDialog() {
         val cfg = syncService.loadConfig()
 

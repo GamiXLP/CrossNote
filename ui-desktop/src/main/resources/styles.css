@@ -601,10 +601,16 @@
 
 /* =========================================================
    DARK MODE – CONTEXT MENUS
-   (ContextMenu hat eigenes Popup-Root, daher .context-menu.dark)
    ========================================================= */
 
 .context-menu.dark {
+    /* Outer shell (manchmal nicht das, was weiß ist) */
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+/* ✅ Das ist bei Modena sehr oft der "weiße Kasten" */
+.context-menu.dark .context-menu-content {
     -fx-background-color: rgba(17,24,39,0.98);
     -fx-background-insets: 0;
     -fx-background-radius: 10;
@@ -615,6 +621,13 @@
     -fx-border-radius: 10;
 
     -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.45), 18, 0.20, 0, 8);
+}
+
+/* ✅ Falls das Menu intern in einer ScrollPane steckt */
+.context-menu.dark .scroll-pane,
+.context-menu.dark .scroll-pane .viewport,
+.context-menu.dark .scroll-pane .content {
+    -fx-background-color: transparent;
 }
 
 /* MenuItems */
@@ -641,4 +654,21 @@
 .context-menu.dark .separator:horizontal .line {
     -fx-border-color: rgba(255,255,255,0.12);
     -fx-border-width: 1 0 0 0;
+}
+
+/* =========================================================
+   DARK MODE – CONTEXT MENUS (HARD OVERRIDE für innere Container)
+   ========================================================= */
+
+.context-menu.dark,
+.context-menu.dark .context-menu-content,
+.context-menu.dark .scroll-pane,
+.context-menu.dark .scroll-pane .viewport {
+    -fx-background-color: rgba(17,24,39,0.98);
+}
+
+/* falls JavaFX den Background über "background" statt background-color setzt */
+.context-menu.dark {
+    -fx-background-insets: 0;
+    -fx-background-radius: 10;
 }

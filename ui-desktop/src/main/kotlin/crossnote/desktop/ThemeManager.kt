@@ -3,6 +3,7 @@ package crossnote.desktop
 import crossnote.domain.settings.getBoolean
 import crossnote.domain.settings.setBoolean
 import crossnote.infra.persistence.SqliteSettingsRepository
+import javafx.event.EventHandler
 import javafx.scene.Parent
 import javafx.scene.Scene
 import javafx.scene.control.Button
@@ -26,9 +27,7 @@ class ThemeManager(
         updateToggleText()
 
         toggleButton.sceneProperty().addListener { _, _, scene ->
-            if (scene != null) {
-                register(scene)
-            }
+            if (scene != null) register(scene)
         }
     }
 
@@ -52,22 +51,50 @@ class ThemeManager(
     }
 
     /**
-     * ✅ ContextMenu: apply Theme auf den *echten* ".context-menu" Node im Popup,
-     * nicht blind auf scene.root.
+     * ContextMenu ist ein Popup mit eigener Scene + eigenem Root.
+     * WICHTIG: Dark-Klasse muss auf menu.scene.root, sonst bleibt der Hintergrund Modena-weiß.
      */
     fun register(menu: ContextMenu) {
         contextMenus[menu] = Unit
 
-        fun applyMenuThemeNow() {
-            applyThemeToContextMenu(menu)
+        val previous = menu.onShowing
+        menu.onShowing = EventHandler { ev ->
+            previous?.handle(ev)
+
+            // Popup-Scene existiert erst beim Anzeigen
+            val popupScene = menu.scene ?: return@EventHandler
+            ensureStylesheet(popupScene)
+
+            applyToContextMenuPopup(menu)
+        }
+    }
+
+    private fun applyToContextMenuPopup(menu: ContextMenu) {
+        // 1) Menü selbst (zur Sicherheit)
+        if (darkMode) {
+            if (!menu.styleClass.contains("dark")) menu.styleClass.add("dark")
+        } else {
+            menu.styleClass.remove("dark")
         }
 
-        // wenn Scene schon existiert
-        applyMenuThemeNow()
+        // 2) Popup Root
+        val root = menu.scene?.root as? Parent ?: return
+        if (darkMode) {
+            if (!root.styleClass.contains("dark")) root.styleClass.add("dark")
+        } else {
+            root.styleClass.remove("dark")
+        }
 
-        // beim Öffnen: hier existiert die Popup-Scene garantiert
-        menu.setOnShowing {
-            applyMenuThemeNow()
+        // 3) **WICHTIG**: alle Nodes, die JavaFX als ".context-menu" rendert, ebenfalls togglen
+        // (damit egal welcher Container den Background trägt)
+        val contextMenuNodes = root.lookupAll(".context-menu")
+        for (n in contextMenuNodes) {
+            val p = n as? Parent ?: continue
+            if (darkMode) {
+                if (!p.styleClass.contains("dark")) p.styleClass.add("dark")
+            } else {
+                p.styleClass.remove("dark")
+            }
         }
     }
 
@@ -75,14 +102,14 @@ class ThemeManager(
         darkMode = !darkMode
         settingsRepo.setBoolean("darkMode", darkMode)
 
-        // normale Scenes
         scenes.keys.forEach { scene ->
             applyToRoot(scene.root)
         }
 
-        // ContextMenus (wenn offen oder schon initialisiert)
+        // ✅ alle bekannten ContextMenus ebenfalls aktualisieren
         contextMenus.keys.forEach { menu ->
-            applyThemeToContextMenu(menu)
+            menu.scene?.let { ensureStylesheet(it) }
+            applyToPopupRoot(menu)
         }
 
         updateToggleText()
@@ -111,20 +138,13 @@ class ThemeManager(
         }
     }
 
-    /**
-     * ✅ Wichtig: ContextMenu-Popup hat eigene Scene + eigenes Skin-Root.
-     * Wir suchen den Node ".context-menu" und togglen dort "dark".
-     */
-    private fun applyThemeToContextMenu(menu: ContextMenu) {
-        val scene = menu.scene ?: return
-        ensureStylesheet(scene)
+    private fun applyToPopupRoot(menu: ContextMenu) {
+        val popupRoot = menu.scene?.root as? Parent ?: return
 
-        val popupRoot = scene.root as? Parent ?: return
-
-        // der Node, auf den dein CSS ".context-menu.dark" zielt:
-        val cmNode = popupRoot.lookup(".context-menu") as? Parent
-        val target = cmNode ?: popupRoot
-
-        applyToRoot(target)
+        if (darkMode) {
+            if (!popupRoot.styleClass.contains("dark")) popupRoot.styleClass.add("dark")
+        } else {
+            popupRoot.styleClass.remove("dark")
+        }
     }
 }
