@@ -336,6 +336,51 @@
     -fx-transition: all 0.12s ease-in-out;
 }
 
+/* =========================================================
+   LISTVIEW (SAVESTATES)  ✅ FIX: Hintergrund/Cells für Light+Dark
+   ========================================================= */
+
+/* Grundfläche ListView: transparent, damit die Card-Farbe durchscheint */
+.sidebar-list.list-view {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+
+    /* DAS ist oft die weiße Fläche: */
+    -fx-control-inner-background: transparent;
+}
+
+/* VirtualFlow (innen) ebenfalls transparent */
+.sidebar-list.list-view .virtual-flow {
+    -fx-background-color: transparent;
+}
+
+/* Zellen */
+.sidebar-list.list-view .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: #0f172a;
+    -fx-padding: 8 10;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-font-size: 13.2px;
+}
+
+/* Hover / Selected */
+.sidebar-list.list-view .list-cell:hover {
+    -fx-background-color: rgba(70,120,255,0.12);
+}
+
+.sidebar-list.list-view .list-cell:filled:selected {
+    -fx-background-color: rgba(70,120,255,0.20);
+    -fx-text-fill: #0f172a;
+    -fx-font-weight: 700;
+}
+
+/* Leere Zellen wirklich leer */
+.sidebar-list.list-view .list-cell:empty {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
 
 /* =========================================================
    SEPARATOR
@@ -481,9 +526,35 @@
 .root.dark .note-content .scroll-pane .viewport {
     -fx-background-color: rgba(255,255,255,0.06);
 }
+
 /* ===== Dark: Tree disclosure arrows sichtbar ===== */
 .root.dark .tree-cell .tree-disclosure-node .arrow {
     -fx-background-color: rgba(229,231,235,0.85); /* hell, gut sichtbar */
+}
+
+/* ===== Dark: ListView Savestates (Hintergrund + Zellen) ===== */
+.root.dark .sidebar-list.list-view {
+    -fx-background-color: transparent;
+    -fx-control-inner-background: transparent;
+}
+
+.root.dark .sidebar-list.list-view .virtual-flow {
+    -fx-background-color: transparent;
+}
+
+.root.dark .sidebar-list.list-view .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: #e5e7eb;
+}
+
+.root.dark .sidebar-list.list-view .list-cell:hover {
+    -fx-background-color: rgba(255,255,255,0.08);
+}
+
+.root.dark .sidebar-list.list-view .list-cell:filled:selected {
+    -fx-background-color: rgba(70,120,255,0.22);
+    -fx-text-fill: #ffffff;
+    -fx-font-weight: 700;
 }
 
 /* Theme Toggle: niemals Text anzeigen */
@@ -542,7 +613,6 @@
 .root.dark .corner {
     -fx-background-color: transparent;
 }
-
 
 /* =========================================================
    DARK MODE – DIALOGS / ALERTS
