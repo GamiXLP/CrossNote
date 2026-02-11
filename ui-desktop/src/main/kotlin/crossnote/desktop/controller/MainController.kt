@@ -113,6 +113,8 @@ class MainController {
     @FXML lateinit var contentArea: TextArea
     @FXML lateinit var LBlastchange: Label
     @FXML lateinit var LBsaved: Label
+    @FXML lateinit var LBtitleCount: Label
+
 
     // ---------- Roots ----------
     private val treeRoot = TreeItem<NavNode>(NavNode.RootHeader).apply { isExpanded = true }
@@ -176,6 +178,7 @@ class MainController {
             contentArea = contentArea,
             lastChangeLabel = LBlastchange,
             savedLabel = LBsaved,
+            titleCountLabel = LBtitleCount,
             trashCountdownText = { id -> trashPresenter.trashCountdownText(id) },
             onAfterSaveOrDelete = { notebookTreePresenter.refresh() }
         )

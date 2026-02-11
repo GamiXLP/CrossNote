@@ -244,6 +244,8 @@
                            promptText="Titel der Notiz"
                            styleClass="note-title"
                            HBox.hgrow="ALWAYS"/>
+                           
+                <Label fx:id="LBtitleCount" text="Noch 120 Zeichen" opacity="0.7"/>
 
                 <Button fx:id="BTNsave"
                         styleClass="icon-pill"
