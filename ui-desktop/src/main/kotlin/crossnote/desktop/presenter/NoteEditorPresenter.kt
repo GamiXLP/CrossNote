@@ -3,6 +3,10 @@ package crossnote.desktop.presenter
 import crossnote.app.note.NoteAppService
 import crossnote.domain.note.NoteId
 import crossnote.domain.note.NotebookId
+import crossnote.domain.note.ValidationException
+import crossnote.domain.note.TextConstraints
+import crossnote.desktop.util.DialogsExt
+import javafx.scene.control.TextFormatter
 import javafx.scene.control.Label
 import javafx.scene.control.TextArea
 import javafx.scene.control.TextField
@@ -20,6 +24,16 @@ class NoteEditorPresenter(
         private set
 
     var selectedNotebookId: NotebookId? = null
+
+    init {
+        titleField.textFormatter = TextFormatter<String> { change ->
+            val newText = change.controlNewText
+            if (newText.length <= TextConstraints.NOTE_TITLE_MAX) change else null
+        }
+
+        // optional: kleines UX-Detail
+        titleField.promptText = "Titel (max. ${TextConstraints.NOTE_TITLE_MAX} Zeichen)"
+    }
 
     fun resetEditor() {
         selectedNoteId = null
@@ -55,12 +69,21 @@ class NoteEditorPresenter(
 
         val id = selectedNoteId
         if (id == null) {
-            val newId = service.createNote(title, content, notebookId = selectedNotebookId)
-            selectedNoteId = newId.value
-            savedLabel.text = "Gespeichert (neu)"
+            try{
+                val newId = service.createNote(title, content, notebookId = selectedNotebookId)
+                selectedNoteId = newId.value
+                savedLabel.text = "Gespeichert (neu)"
+            } catch (e: ValidationException) {
+                DialogsExt.warn(e.message ?: "Ungültige Eingabe")
+            }
+
         } else {
-            service.updateNote(NoteId(id), title, content)
-            savedLabel.text = "Gespeichert (Revision erstellt)"
+            try{
+                service.updateNote(NoteId(id), title, content)
+                savedLabel.text = "Gespeichert (Revision erstellt)"
+            } catch (e: ValidationException) {
+                DialogsExt.warn(e.message ?: "Ungültige Eingabe")
+            }
         }
 
         val refreshed = service.getNote(NoteId(selectedNoteId!!))

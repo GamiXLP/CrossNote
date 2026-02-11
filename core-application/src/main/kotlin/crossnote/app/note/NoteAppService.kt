@@ -39,7 +39,7 @@ class NoteAppService(
         val note = Note(
             id = ids.newId(),
             notebookId = notebookId,
-            title = title.trim(),
+            title = validateNoteTitle(title),
             content = content,
             createdAt = now,
             updatedAt = now,
@@ -57,7 +57,7 @@ class NoteAppService(
 
         val now = clock.now()
         val updated = existing.copy(
-            title = title.trim(),
+            title = validateNoteTitle(title),
             content = content,
             updatedAt = now
         )
@@ -221,6 +221,7 @@ class NoteAppService(
         )
     
     fun createNotebook(name: String): NotebookId {
+        val validated = validateNotebookName(name)
         val trimmed = name.trim()
         require(trimmed.isNotEmpty()) { "Notebook name must not be empty" }
         return NotebookId(UUID.randomUUID().toString())

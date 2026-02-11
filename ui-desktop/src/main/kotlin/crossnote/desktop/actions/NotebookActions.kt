@@ -5,9 +5,14 @@ import crossnote.desktop.util.NotebookTreeUtils
 import crossnote.domain.note.NoteId
 import crossnote.domain.note.Notebook
 import crossnote.domain.note.NotebookId
+import crossnote.domain.note.TextConstraints
+import crossnote.domain.note.ValidationException
+import crossnote.domain.note.validateNotebookName
 import crossnote.infra.persistence.SqliteNoteRepository
 import crossnote.infra.persistence.SqliteNotebookRepository
+import crossnote.desktop.util.DialogsExt
 import javafx.scene.control.TextInputDialog
+import javafx.scene.control.TextFormatter
 import java.time.Instant
 import java.util.UUID
 
@@ -27,11 +32,25 @@ class NotebookActions(
             headerText = if (parent == null) "Ordner anlegen" else "Unterordner anlegen"
             contentText = "Name:"
         }
+
+        dialog.editor.textFormatter = TextFormatter<String> { change ->
+            val newText = change.controlNewText
+            if (newText.length <= TextConstraints.NOTEBOOK_NAME_MAX) change else null
+        }
+        dialog.editor.promptText = "Max. ${TextConstraints.NOTEBOOK_NAME_MAX} Zeichen"
+
+
         val result = dialog.showAndWait()
         if (result.isEmpty) return
 
-        val name = result.get().trim()
-        if (name.isEmpty()) return
+        val raw = result.get()
+
+        val name = try {
+            validateNotebookName(raw)
+        } catch (e: ValidationException) {
+            DialogsExt.warn(e.message ?: "Ungültiger Ordnername")
+            return
+        }
 
         val id = NotebookId(UUID.randomUUID().toString())
         notebookRepo.save(Notebook(id, name, parentId = parent))
