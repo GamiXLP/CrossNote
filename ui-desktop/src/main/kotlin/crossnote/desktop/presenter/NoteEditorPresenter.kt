@@ -10,6 +10,7 @@ import javafx.scene.control.Label
 import javafx.scene.control.TextArea
 import javafx.scene.control.TextField
 import javafx.scene.control.TextFormatter
+import javafx.scene.text.Text
 
 class NoteEditorPresenter(
     private val service: NoteAppService,
@@ -34,10 +35,22 @@ class NoteEditorPresenter(
 
         titleField.promptText = "Titel (max. ${TextConstraints.NOTE_TITLE_MAX} Zeichen)"
 
+        // ✅ Breite fixieren basierend auf längstem möglichen Text (ohne Scene nötig)
+        val maxText = "Noch ${TextConstraints.NOTE_TITLE_MAX} Zeichen"
+        val measuredWidth = Text(maxText).apply { font = titleCountLabel.font }.layoutBounds.width + 6.0
+
+        titleCountLabel.minWidth = measuredWidth
+        titleCountLabel.prefWidth = measuredWidth
+        titleCountLabel.maxWidth = measuredWidth
+
+
+        // --- Counter Logik ---
         fun updateCounter(text: String?) {
             val len = (text ?: "").length
             val remaining = TextConstraints.NOTE_TITLE_MAX - len
-            titleCountLabel.text = if (remaining <= 0) "Limit erreicht" else "Noch $remaining Zeichen"
+            titleCountLabel.text =
+                if (remaining <= 0) "Limit erreicht"
+                else "Noch $remaining Zeichen"
         }
 
         // initial
@@ -47,7 +60,7 @@ class NoteEditorPresenter(
         titleField.textProperty().addListener { _, _, newValue ->
             updateCounter(newValue)
         }
-    }
+}
 
     fun resetEditor() {
         selectedNoteId = null
