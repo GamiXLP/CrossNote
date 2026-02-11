@@ -13,13 +13,18 @@ import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
 class LocalSyncServer(
     private val notebookRepo: SqliteNotebookRepository,
-    private val noteRepo: NoteRepository
+    private val noteRepo: NoteRepository,
+    private val onDataChanged: (() -> Unit)? = null
 ) {
     private var server: HttpServer? = null
     private var executor: ExecutorService? = null
+
+    // simple debounce: max 1 signal per 300ms
+    private val lastSignalMs = AtomicLong(0L)
 
     fun start(port: Int) {
         if (server != null) return
@@ -27,7 +32,6 @@ class LocalSyncServer(
         val s = HttpServer.create(InetSocketAddress("0.0.0.0", port), 0)
         println("SyncServer listening on 0.0.0.0:$port")
 
-        // minimal endpoints
         s.createContext("/ping") { ex ->
             respondText(ex, 200, "ok")
         }
@@ -62,6 +66,8 @@ class LocalSyncServer(
                     if (applyNotebook(remote)) applied++
                 }
 
+                if (applied > 0) signalDataChanged()
+
                 respondText(ex, 200, "applied=$applied")
             } catch (t: Throwable) {
                 respondText(ex, 500, "Server error: ${t.message}")
@@ -91,7 +97,7 @@ class LocalSyncServer(
             }
         }
 
-        // POST /notes/push (body = NoteWire lines)
+        // POST /notes/push
         s.createContext("/notes/push") { ex ->
             try {
                 if (ex.requestMethod.uppercase() != "POST") {
@@ -106,6 +112,8 @@ class LocalSyncServer(
                 for (remote in incoming) {
                     if (applyIfNewer(remote)) applied++
                 }
+
+                if (applied > 0) signalDataChanged()
 
                 respondText(ex, 200, "applied=$applied")
             } catch (t: Throwable) {
@@ -122,20 +130,30 @@ class LocalSyncServer(
     }
 
     fun stop() {
-        // Stop accepting new requests
         server?.stop(0)
         server = null
 
-        // IMPORTANT: stop worker threads, otherwise JVM keeps running
         executor?.shutdownNow()
         executor = null
     }
 
     fun isRunning(): Boolean = server != null
 
+    private fun signalDataChanged() {
+        val now = System.currentTimeMillis()
+        val last = lastSignalMs.get()
+        if (now - last < 300) return
+        if (lastSignalMs.compareAndSet(last, now)) {
+            try {
+                onDataChanged?.invoke()
+            } catch (_: Throwable) {
+                // ignore
+            }
+        }
+    }
+
     /**
      * Last-Write-Wins anhand updatedAt.
-     * Wenn remote.updatedAt > local.updatedAt -> übernehmen.
      */
     private fun applyIfNewer(remote: Note): Boolean {
         val local = noteRepo.findById(remote.id)
@@ -188,7 +206,6 @@ class LocalSyncServer(
     }
 
     private fun queryParam(rawQuery: String, key: String): String? {
-        // very small query parser
         val pairs = rawQuery.split("&").filter { it.isNotBlank() }
         for (p in pairs) {
             val idx = p.indexOf("=")
