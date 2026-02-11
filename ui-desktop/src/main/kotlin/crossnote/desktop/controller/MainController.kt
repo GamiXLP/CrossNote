@@ -80,7 +80,23 @@ class MainController {
 
     private val syncService = SyncService(settingsRepo)
     private val syncClient = HttpSyncClient()
-    private val localSyncServer = LocalSyncServer(notebookRepo, noteRepo)
+    private val localSyncServer: LocalSyncServer by lazy {
+        LocalSyncServer(
+            notebookRepo = notebookRepo,
+            noteRepo = noteRepo,
+            onDataChanged = {
+                // kommt aus HTTP-Worker-Thread -> UI-Thread erzwingen
+                Platform.runLater {
+                    if (::notebookTreePresenter.isInitialized) {
+                        notebookTreePresenter.refresh()
+                    }
+                    if (::trashPresenter.isInitialized) {
+                        trashPresenter.refresh()
+                    }
+                }
+            }
+        )
+    }
 
     // ---------- Left panes ----------
     @FXML lateinit var APnotebooks: AnchorPane
