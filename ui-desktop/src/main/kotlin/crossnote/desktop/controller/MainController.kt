@@ -15,8 +15,11 @@ import crossnote.desktop.sync.HttpSyncClient
 import crossnote.desktop.sync.LocalSyncServer
 import crossnote.desktop.sync.NoteWire
 import crossnote.desktop.sync.NotebookWire
+import crossnote.desktop.sync.UdpDiscoveryClient
+import crossnote.desktop.sync.UdpDiscoveryServer
 import crossnote.desktop.ui.UiStateController
 import crossnote.desktop.util.Dialogs
+import crossnote.desktop.util.NotebookTreeUtils
 import crossnote.domain.note.NoteId
 import crossnote.infra.persistence.SqliteDatabase
 import crossnote.infra.persistence.SqliteNoteRepository
@@ -25,17 +28,12 @@ import crossnote.infra.persistence.SqliteRevisionRepository
 import crossnote.infra.persistence.SqliteSettingsRepository
 import crossnote.infra.persistence.SystemClock
 import crossnote.infra.persistence.UuidIdGenerator
-import crossnote.desktop.util.NotebookTreeUtils
-import javafx.scene.Node
-import java.nio.file.Paths
 import javafx.application.Platform
-import javafx.beans.binding.Bindings
 import javafx.event.ActionEvent
 import javafx.fxml.FXML
 import javafx.geometry.Insets
 import javafx.geometry.Pos
 import javafx.scene.control.Button
-import javafx.scene.control.ButtonBar
 import javafx.scene.control.ButtonType
 import javafx.scene.control.CheckBox
 import javafx.scene.control.ContextMenu
@@ -52,7 +50,7 @@ import javafx.scene.layout.AnchorPane
 import javafx.scene.layout.GridPane
 import javafx.scene.layout.HBox
 import javafx.scene.layout.Priority
-import javafx.scene.layout.Region
+import java.nio.file.Paths
 import javafx.scene.control.TextField as FxTextField
 
 class MainController {
@@ -80,6 +78,14 @@ class MainController {
 
     private val syncService = SyncService(settingsRepo)
     private val syncClient = HttpSyncClient()
+
+    // --------- LAN Discovery (UDP) ----------
+    private val discoveryClient = UdpDiscoveryClient()
+    private val discoveryServer = UdpDiscoveryServer(
+        httpPort = { syncService.loadConfig().port },
+        serverName = { "CrossNote (${System.getProperty("user.name")})" }
+    )
+
     private val localSyncServer: LocalSyncServer by lazy {
         LocalSyncServer(
             notebookRepo = notebookRepo,
@@ -130,7 +136,6 @@ class MainController {
     @FXML lateinit var LBlastchange: Label
     @FXML lateinit var LBsaved: Label
     @FXML lateinit var LBtitleCount: Label
-
 
     // ---------- Roots ----------
     private val treeRoot = TreeItem<NavNode>(NavNode.RootHeader).apply { isExpanded = true }
@@ -260,10 +265,8 @@ class MainController {
                             val ti = treeItem ?: return
 
                             fun buildIcon(expanded: Boolean) =
-                                if (expanded)
-                                    NotebookTreeUtils.createOpenFolderIcon()
-                                else
-                                    NotebookTreeUtils.createClosedFolderIcon()
+                                if (expanded) NotebookTreeUtils.createOpenFolderIcon()
+                                else NotebookTreeUtils.createClosedFolderIcon()
 
                             fun updateIcon() {
                                 val icon = buildIcon(ti.isExpanded)
@@ -490,6 +493,7 @@ class MainController {
         }
 
         // --- Custom Footer Buttons (volle Breite, alle gleich breit) ---
+        val btnFindServer = Button("Server finden")
         val btnApply = Button("Apply")
         val btnCancel = Button("Cancel")
         val btnSyncNow = Button("Sync now")
@@ -498,7 +502,7 @@ class MainController {
         btnSyncNow.isDefaultButton = true
         btnCancel.isCancelButton = true
 
-        val footer = HBox(12.0, btnApply, btnCancel, btnSyncNow).apply {
+        val footer = HBox(12.0, btnFindServer, btnApply, btnCancel, btnSyncNow).apply {
             alignment = Pos.CENTER
             padding = Insets(12.0, 16.0, 0.0, 16.0)
 
@@ -561,6 +565,41 @@ class MainController {
             return true
         }
 
+        btnFindServer.setOnAction {
+            btnFindServer.isDisable = true
+            val oldText = btnFindServer.text
+            btnFindServer.text = "Suche..."
+
+            Thread {
+                try {
+                    val servers = discoveryClient.discover(timeoutMs = 900)
+                    Platform.runLater {
+                        if (servers.isEmpty()) {
+                            Dialogs.info(
+                                "Server finden",
+                                "Kein Server im Netzwerk gefunden.\n" +
+                                        "Stelle sicher, dass der Server-Modus aktiv ist und ihr im gleichen WLAN/LAN seid."
+                            )
+                        } else {
+                            val s = servers.first()
+                            hostField.text = s.host
+                            portField.text = s.httpPort.toString()
+                            Dialogs.info("Server gefunden", "Gefunden: ${s.name}\n${s.host}:${s.httpPort}")
+                        }
+                    }
+                } catch (t: Throwable) {
+                    Platform.runLater {
+                        Dialogs.error("Server finden", "Fehler bei der Suche: ${t.message}")
+                    }
+                } finally {
+                    Platform.runLater {
+                        btnFindServer.isDisable = false
+                        btnFindServer.text = oldText
+                    }
+                }
+            }.start()
+        }
+
         btnApply.setOnAction {
             if (validateAndSave()) {
                 dialog.setResult(ButtonType.APPLY)
@@ -590,7 +629,6 @@ class MainController {
         }
     }
 
-
     private fun doSyncNow() {
         val cfg = syncService.loadConfig()
         if (!cfg.enabled) {
@@ -603,6 +641,9 @@ class MainController {
             if (!localSyncServer.isRunning()) {
                 try {
                     localSyncServer.start(cfg.port)
+                    if (!discoveryServer.isRunning()) {
+                        discoveryServer.start()
+                    }
                 } catch (t: Throwable) {
                     Dialogs.error("Synchronisation", "Server konnte nicht gestartet werden: ${t.message}")
                     return
@@ -623,9 +664,9 @@ class MainController {
                 val local = notebookRepo.findById(remote.id)
                 val shouldApply =
                     local == null ||
-                        local.name != remote.name ||
-                        local.parentId != remote.parentId ||
-                        local.trashedAt != remote.trashedAt
+                            local.name != remote.name ||
+                            local.parentId != remote.parentId ||
+                            local.trashedAt != remote.trashedAt
 
                 if (shouldApply) {
                     notebookRepo.save(remote)
@@ -647,9 +688,11 @@ class MainController {
                 val local = noteRepo.findById(remote.id)
                 val shouldApply =
                     local == null ||
-                        remote.updatedAt.isAfter(local.updatedAt) ||
-                        (remote.updatedAt == local.updatedAt &&
-                            (remote.title != local.title || remote.content != local.content || remote.trashedAt != local.trashedAt))
+                            remote.updatedAt.isAfter(local.updatedAt) ||
+                            (remote.updatedAt == local.updatedAt &&
+                                    (remote.title != local.title ||
+                                            remote.content != local.content ||
+                                            remote.trashedAt != local.trashedAt))
 
                 if (shouldApply) {
                     noteRepo.save(remote)
@@ -669,9 +712,9 @@ class MainController {
             Dialogs.info(
                 "Synchronisation",
                 "Notebooks Pull: erhalten=${remoteNbs.size}, übernommen=$nbApplied\n" +
-                    "Notebooks Push: gesendet=${localNbs.size}, Server: $nbPushResult\n\n" +
-                    "Notes Pull: erhalten=${pulledNotes.size}, übernommen=$pulledApplied\n" +
-                    "Notes Push: gesendet=${localChanged.size}, Server: $pushResult"
+                        "Notebooks Push: gesendet=${localNbs.size}, Server: $nbPushResult\n\n" +
+                        "Notes Pull: erhalten=${pulledNotes.size}, übernommen=$pulledApplied\n" +
+                        "Notes Push: gesendet=${localChanged.size}, Server: $pushResult"
             )
         } catch (t: Throwable) {
             Dialogs.error("Synchronisation", "Sync fehlgeschlagen: ${t.message}")
@@ -683,6 +726,9 @@ class MainController {
         if (cfg.enabled && cfg.serverMode) {
             try {
                 localSyncServer.start(cfg.port)
+                if (!discoveryServer.isRunning()) {
+                    discoveryServer.start()
+                }
             } catch (t: Throwable) {
                 Dialogs.error("Synchronisation", "Server konnte nicht gestartet werden: ${t.message}")
             }
@@ -690,6 +736,7 @@ class MainController {
     }
 
     fun close() {
+        discoveryServer.stop()
         localSyncServer.stop()
         db.close()
     }
