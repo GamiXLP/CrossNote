@@ -1,0 +1,286 @@
+/* =========================================================
+   BASE: structure + components (no hardcoded theme colors)
+   ========================================================= */
+
+.root {
+    -fx-font-family: "Inter", "Segoe UI", sans-serif;
+    -fx-background-color: -cn-bg;
+    -fx-text-fill: -cn-text;
+}
+
+/* ================= TOP BAR ================= */
+.top-bar {
+    -fx-background-color: -cn-topbar-bg;
+    -fx-border-color: -cn-topbar-border;
+    -fx-border-width: 0 0 1 0;
+    -fx-alignment: center-left;
+}
+
+.app-title {
+    -fx-font-size: 20px;
+    -fx-font-weight: 700;
+    -fx-text-fill: -cn-title;
+}
+
+.app-icon {
+    -fx-background-color: -cn-accent-soft;
+    -fx-background-radius: 12;
+    -fx-padding: 7;
+}
+
+/* ================= LAYOUT AREAS ================= */
+.sidebar {
+    -fx-background-color: transparent;
+    -fx-border-color: -cn-sidebar-border;
+    -fx-border-width: 0 1 0 0;
+}
+
+.note-list-container {
+    -fx-padding: 18;
+    -fx-background-color: transparent;
+}
+
+/* ================= CARDS ================= */
+.card {
+    -fx-background-color: -cn-card-bg;
+    -fx-background-radius: 18;
+    -fx-border-radius: 18;
+    -fx-border-color: -cn-card-border;
+    -fx-border-width: 1;
+    -fx-effect: -cn-card-shadow;
+    -fx-padding: 16;
+}
+
+.sidebar-card {
+    -fx-background-color: -cn-card-bg-soft;
+}
+
+/* ================= TYPO / TITLES ================= */
+.section-title {
+    -fx-font-size: 15px;
+    -fx-font-weight: 700;
+    -fx-text-fill: -cn-section-title;
+}
+
+/* ================= INPUTS ================= */
+.text-field {
+    -fx-background-color: -cn-input-bg;
+    -fx-background-radius: 12;
+    -fx-border-radius: 12;
+    -fx-border-color: transparent;
+    -fx-padding: 10 12;
+    -fx-font-size: 13.5px;
+
+    -fx-text-fill: -cn-input-text;
+    -fx-prompt-text-fill: -cn-input-prompt;
+}
+
+.text-field:focused {
+    -fx-background-color: -cn-input-bg-focus;
+    -fx-border-color: -cn-input-border-focus;
+    -fx-border-width: 1.5;
+    -fx-effect: -cn-input-focus-shadow;
+}
+
+.search-field {
+    -fx-background-color: -cn-input-bg;
+}
+
+.note-title {
+    -fx-font-size: 16px;
+    -fx-font-weight: 700;
+}
+
+/* ================= TEXTAREA (paper) ================= */
+.note-content {
+    -fx-border-color: -cn-paper-border;
+    -fx-border-width: 1.2;
+    -fx-background-radius: 18;
+    -fx-border-radius: 18;
+    -fx-font-size: 13.5px;
+}
+
+.note-content .scroll-pane,
+.note-content .scroll-pane .viewport {
+    -fx-background-color: transparent;
+}
+
+.note-content .content {
+    -fx-background-color: -cn-paper-bg;
+    -fx-background-radius: 18;
+    -fx-padding: 16;
+}
+
+.note-content:focused {
+    -fx-effect: -cn-editor-focus-shadow;
+}
+
+/* ================= BUTTONS ================= */
+.primary-button {
+    -fx-background-color: -cn-accent;
+    -fx-text-fill: white;
+    -fx-font-weight: 700;
+    -fx-background-radius: 12;
+    -fx-padding: 10 14;
+}
+
+.primary-button:hover {
+    -fx-background-color: -cn-accent-hover;
+}
+
+.icon-button {
+    -fx-background-color: transparent;
+    -fx-padding: 8;
+    -fx-background-radius: 12;
+    -fx-cursor: hand;
+}
+
+.icon-button:hover {
+    -fx-background-color: -cn-accent-soft;
+}
+
+.icon-pill {
+    -fx-background-color: -cn-accent-soft;
+    -fx-background-radius: 12;
+    -fx-padding: 8 10;
+    -fx-cursor: hand;
+}
+
+.icon-pill:hover {
+    -fx-background-color: -cn-accent-soft-hover;
+}
+
+.icon-pill.primary {
+    -fx-background-color: -cn-accent;
+}
+
+/* ================= ICONS ================= */
+.icon {
+    -fx-fill: transparent;
+    -fx-stroke: -cn-icon-stroke;
+    -fx-stroke-width: 2;
+    -fx-stroke-line-cap: round;
+    -fx-stroke-line-join: round;
+}
+
+.icon-large {
+    -fx-fill: transparent;
+    -fx-stroke: -cn-icon-stroke;
+    -fx-stroke-width: 2.5;
+    -fx-stroke-line-cap: round;
+    -fx-stroke-line-join: round;
+}
+
+.icon-pill.primary .icon,
+.icon-pill.primary .icon-large {
+    -fx-stroke: white;
+}
+
+.icon-filled {
+    -fx-stroke: transparent;
+    -fx-fill: -cn-icon-fill;
+}
+
+/* ================= THEME TOGGLE ================= */
+.theme-icon-light { -fx-opacity: 1; }
+.theme-icon-dark  { -fx-opacity: 0; }
+
+.root.dark .theme-icon-light { -fx-opacity: 0; }
+.root.dark .theme-icon-dark  { -fx-opacity: 1; }
+
+.theme-toggle { -fx-content-display: graphic-only; }
+.theme-toggle .text { -fx-opacity: 0; }
+
+/* ================= TREEVIEW (clean) ================= */
+.tree-view,
+.tree-view .virtual-flow {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.tree-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 8 10 8 6;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-text-fill: -cn-tree-text;
+    -fx-font-size: 13.2px;
+}
+
+.tree-cell:hover {
+    -fx-background-color: -cn-tree-hover;
+}
+
+.tree-cell:selected {
+    -fx-background-color: -cn-tree-selected;
+    -fx-font-weight: 700;
+}
+
+/* =========================================================
+   TREEVIEW – stabiler Spacer für saubere Ausrichtung
+   (WICHTIG: nicht auf 0 setzen, sonst "wandern" Zellen manchmal)
+   ========================================================= */
+
+.tree-cell .tree-disclosure-node {
+    -fx-padding: 0 6 0 0;
+    -fx-min-width: 16;
+    -fx-pref-width: 16;
+    -fx-max-width: 16;
+    -fx-background-color: transparent;
+}
+
+/* Pfeil unsichtbar machen, aber Spacer behalten */
+.tree-cell .tree-disclosure-node .arrow {
+    -fx-background-color: transparent;
+    -fx-shape: "";
+    -fx-padding: 0;
+}
+
+/* Optional: falls irgendwo noch ein Klickbereich nervt */
+.tree-cell .tree-disclosure-node {
+    -fx-opacity: 0; /* Spacer bleibt trotzdem da */
+}
+
+.trash-tree .tree-cell .tree-disclosure-node .arrow {
+    -fx-background-color: -cn-tree-arrow;
+}
+
+/* Empty cells */
+.tree-cell:empty {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+.tree-cell:empty:hover,
+.tree-cell:empty:selected {
+    -fx-background-color: transparent;
+}
+.tree-cell:empty .graphic {
+    -fx-padding: 0;
+    -fx-opacity: 0;
+}
+
+/* Graphic spacing */
+.tree-cell .graphic { -fx-padding: 0 6 0 2; }
+.tree-cell:hover .graphic { -fx-opacity: 0.95; }
+.tree-cell:selected .graphic { -fx-opacity: 1; }
+
+/* ================= SEPARATOR ================= */
+.separator { -fx-opacity: 0.25; }
+
+/* ================= SCROLLBARS ================= */
+.scroll-bar { -fx-background-color: transparent; }
+.scroll-bar .track { -fx-background-color: transparent; }
+
+.scroll-bar .thumb {
+    -fx-background-color: -cn-scroll-thumb;
+    -fx-background-radius: 999;
+}
+.scroll-bar .thumb:hover {
+    -fx-background-color: -cn-scroll-thumb-hover;
+}
+
+.scroll-bar .increment-button,
+.scroll-bar .decrement-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}

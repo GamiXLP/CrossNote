@@ -18,6 +18,7 @@ import javafx.scene.input.ClipboardContent
 import javafx.scene.input.DragEvent
 import javafx.scene.input.Dragboard
 import javafx.scene.input.TransferMode
+import javafx.geometry.Insets
 
 class NotebookTreeCell(
     private val service: NoteAppService,
