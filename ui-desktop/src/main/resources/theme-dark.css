@@ -43,6 +43,10 @@
 
     -cn-scroll-thumb: rgba(255,255,255,0.35);
     -cn-scroll-thumb-hover: rgba(255,255,255,0.55);
+
+    /* secondary / hint text (z.B. Titellängenanzeige) */
+    -cn-muted: rgba(229,231,235,0.70);
+    -cn-muted-strong: rgba(229,231,235,0.85);
 }
 
 /* Editor layers extra sicher */
@@ -102,6 +106,17 @@
 
 .dialog-pane.dark .button:hover {
     -fx-background-color: rgba(255,255,255,0.16);
+}
+
+/* Titellängenanzeige sichtbar machen */
+.root.dark .title-counter {
+    -fx-text-fill: -cn-muted-strong;
+    -fx-opacity: 1.0;
+    -fx-font-weight: 600;
+}
+
+.root.dark .title-counter:hover {
+    -fx-text-fill: -cn-text;
 }
 
 /* =========================================================
