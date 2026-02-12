@@ -352,6 +352,8 @@ class MainController {
     }
 
     private fun setupNotebookTreeUi() {
+        TVnotebook.selectionModel.selectionMode =
+            javafx.scene.control.SelectionMode.MULTIPLE
         TVnotebook.setCellFactory {
             NotebookTreeCell(
                 service = service,
