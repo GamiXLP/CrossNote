@@ -26,6 +26,11 @@ class DesktopApp : Application() {
         stage.scene = scene
 
         stage.title = "CrossNote"
+        stage.icons.add(
+            javafx.scene.image.Image(
+                DesktopApp::class.java.getResourceAsStream("/images/CrossNote_Icon.png")
+            )
+        )
 
         stage.setOnCloseRequest {
             try {
