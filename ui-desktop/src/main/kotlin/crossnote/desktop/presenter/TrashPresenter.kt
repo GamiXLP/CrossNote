@@ -32,6 +32,9 @@ class TrashPresenter(
         trashTree.root = trashRoot
 
         trashTree.selectionModel.selectedItemProperty().addListener { _, _, new ->
+            // ✅ Bei Multi-Select nichts automatisch öffnen/wechseln
+            if (trashTree.selectionModel.selectedItems.size != 1) return@addListener
+
             val node = new?.value ?: return@addListener
             if (node is TrashNode.NoteLeaf) {
                 onOpenNoteInTrash(node.noteId.value)
@@ -149,7 +152,7 @@ class TrashPresenter(
         service.moveNoteToNotebook(noteId, originalNotebookId)
     }
 
-    private fun purgeTrashedNote(noteId: NoteId) {
+    fun purgeTrashedNote(noteId: NoteId) {
         if (!Dialogs.confirm(
                 title = "Endgültig löschen",
                 header = "Notiz endgültig löschen?",
@@ -185,7 +188,7 @@ class TrashPresenter(
         onRefreshNotebooks()
     }
 
-    private fun purgeTrashedNotebookRecursively(rootId: NotebookId) {
+    fun purgeTrashedNotebookRecursively(rootId: NotebookId) {
         if (!Dialogs.confirm(
                 title = "Ordner endgültig löschen",
                 header = "Ordner endgültig löschen?",
