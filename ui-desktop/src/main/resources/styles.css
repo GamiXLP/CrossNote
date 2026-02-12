@@ -287,13 +287,6 @@
 /* =========================================================
    TREEVIEW – FIXED DISCLOSURE SPACER (leaf/branch align)
    ========================================================= */
-
-/*
-  WICHTIG:
-  Wir halten den Disclosure-Bereich IMMER auf fester Breite,
-  damit Root-Ordner ohne Kinder NICHT "wie eingerückt" aussehen.
-  Den Pfeil machen wir unsichtbar, aber der Platz bleibt.
-*/
 .tree-cell .tree-disclosure-node {
     -fx-padding: 0 6 0 0;
     -fx-min-width: 16;
