@@ -11,15 +11,25 @@ import crossnote.domain.note.validateNotebookName
 import crossnote.infra.persistence.SqliteNoteRepository
 import crossnote.infra.persistence.SqliteNotebookRepository
 import crossnote.desktop.util.DialogsExt
+import crossnote.desktop.ThemeManager
 import javafx.scene.control.TextInputDialog
 import javafx.scene.control.TextFormatter
 import java.time.Instant
 import java.util.UUID
+import javafx.geometry.Insets
+import javafx.scene.layout.HBox
+import javafx.scene.layout.Priority
+import javafx.scene.layout.Region
+import javafx.scene.layout.VBox
+import javafx.scene.control.Label
+import javafx.scene.image.Image
+import javafx.scene.image.ImageView
 
 class NotebookActions(
     private val service: NoteAppService,
     private val notebookRepo: SqliteNotebookRepository,
     private val noteRepo: SqliteNoteRepository,
+    private val themeManager: ThemeManager,
     private val onAfterChange: () -> Unit,
     private val onAfterTrashChange: () -> Unit,
     private val onClearSelection: () -> Unit,
@@ -33,6 +43,40 @@ class NotebookActions(
             headerText = if (parent == null) "Ordner anlegen" else "Unterordner anlegen"
             contentText = "Name:"
         }
+
+        // ✅ wichtig: Darkmode auf Dialog anwenden
+        themeManager.register(dialog)
+
+        // ✅ JavaFX-Standard-"?" entfernen
+        dialog.graphic = null
+        dialog.dialogPane.graphic = null
+        dialog.dialogPane.stylesheets.add(
+            NotebookActions::class.java.getResource("/styles.css")!!.toExternalForm()
+        )
+        dialog.dialogPane.styleClass.add("cn-dialog")
+
+// ✅ Custom Header im CrossNote-Style
+        val icon = ImageView(
+            Image(NotebookActions::class.java.getResourceAsStream("/images/CrossNote_Icon.png"))
+        ).apply {
+            fitWidth = 18.0
+            fitHeight = 18.0
+            isPreserveRatio = true
+            styleClass.add("cn-dialog-appicon")
+        }
+
+        val title = Label(if (parent == null) "Ordner anlegen" else "Unterordner anlegen").apply {
+            styleClass.add("cn-dialog-title")
+        }
+
+        val spacer = Region().apply { HBox.setHgrow(this, Priority.ALWAYS) }
+
+        val header = HBox(10.0, icon, title, spacer).apply {
+            styleClass.add("cn-dialog-header")
+        }
+
+        dialog.headerText = null
+        dialog.dialogPane.header = header
 
         // --- Zeichenlimit ---
         dialog.editor.textFormatter = TextFormatter<String> { change: TextFormatter.Change ->
@@ -58,11 +102,47 @@ class NotebookActions(
             updateCounter(newValue)
         }
 
-        // --- Layout erweitern ---
-        val content = dialog.dialogPane.content
-        val vbox = javafx.scene.layout.VBox(5.0)
-        vbox.children.addAll(content, counterLabel)
-        dialog.dialogPane.content = vbox
+        // --- Layout (clean & app-like) ---
+        val nameLabel = Label("Name:").apply {
+            styleClass.add("cn-dialog-field-label")
+        }
+
+        val nameField = dialog.editor.apply {
+            prefWidth = 320.0
+        }
+
+        val row = HBox(10.0, nameLabel, nameField).apply {
+            alignment = javafx.geometry.Pos.CENTER_LEFT
+        }
+
+        HBox.setHgrow(nameField, Priority.ALWAYS)
+
+        counterLabel.apply {
+            opacity = 0.7
+            padding = Insets(0.0, 0.0, 4.0, 0.0)
+            styleClass.add("cn-dialog-counter")
+        }
+
+        val wrapper = VBox(10.0).apply {
+            padding = Insets(14.0, 18.0, 10.0, 18.0)
+        }
+
+        wrapper.children.setAll(row, counterLabel)
+        dialog.dialogPane.content = wrapper
+
+        dialog.dialogPane.buttonTypes.forEach { bt ->
+            (dialog.dialogPane.lookupButton(bt) as? javafx.scene.control.Button)?.apply {
+                minWidth = 90.0
+                padding = Insets(8.0, 14.0, 8.0, 14.0)
+            }
+        }
+
+        dialog.initStyle(javafx.stage.StageStyle.TRANSPARENT)
+
+        dialog.setOnShown {
+            val stage = dialog.dialogPane.scene.window as? javafx.stage.Stage
+            stage?.scene?.fill = javafx.scene.paint.Color.TRANSPARENT
+        }
 
         // --- Dialog anzeigen ---
         val result = dialog.showAndWait()
