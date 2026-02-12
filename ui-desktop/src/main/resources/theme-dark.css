@@ -108,14 +108,14 @@
     -fx-background-color: rgba(255,255,255,0.16);
 }
 
-/* Titellängenanzeige sichtbar machen */
-.root.dark .title-counter {
+/* Textanzeigen sichtbar machen */
+.root.dark .text-views {
     -fx-text-fill: -cn-muted-strong;
     -fx-opacity: 1.0;
     -fx-font-weight: 600;
 }
 
-.root.dark .title-counter:hover {
+.root.dark .text-views:hover {
     -fx-text-fill: -cn-text;
 }
 
