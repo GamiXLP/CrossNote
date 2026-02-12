@@ -49,15 +49,61 @@
     -cn-muted-strong: rgba(229,231,235,0.85);
 }
 
-/* Editor layers extra sicher */
-.root.dark .note-content,
-.root.dark .note-content .content,
-.root.dark .note-content .scroll-pane,
-.root.dark .note-content .scroll-pane .viewport {
-    -fx-background-color: -cn-paper-bg;
-    -fx-control-inner-background: -cn-paper-bg;
+/* =========================================================
+   DARK MODE – TEXTAREA / NOTE CONTENT FIX
+   (runde Ecken + gleiche Text-Position wie Lightmode)
+   ========================================================= */
+
+/* Falls note-content direkt auf der TextArea liegt */
+.root.dark .note-content.text-area,
+.root.dark .text-area.note-content {
     -fx-text-fill: -cn-text;
     -fx-prompt-text-fill: rgba(229,231,235,0.45);
+
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 18;
+
+    -fx-control-inner-background: transparent;
+}
+
+/* ScrollPane neutral (WICHTIG: KEIN Padding-Reset auf .content!) */
+.root.dark .note-content.text-area .scroll-pane,
+.root.dark .text-area.note-content .scroll-pane,
+.root.dark .note-content.text-area .scroll-pane .content,
+.root.dark .text-area.note-content .scroll-pane .content {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+}
+
+/* Papier-Hintergrund + Rundung auf dem Viewport (ohne Padding) */
+.root.dark .note-content.text-area .scroll-pane .viewport,
+.root.dark .text-area.note-content .scroll-pane .viewport {
+    -fx-background-color: -cn-paper-bg;
+    -fx-background-insets: 0;
+    -fx-background-radius: 18;
+    -fx-padding: 0;
+}
+
+/* >>> FIX: Padding genau dort setzen, wo der Text tatsächlich liegt <<< */
+/* In vielen Skins ist der Text-Container = .scroll-pane .content */
+.root.dark .note-content.text-area .scroll-pane .content,
+.root.dark .text-area.note-content .scroll-pane .content {
+    -fx-padding: 16;
+}
+
+/* Zusätzlich (je nach Skin) existiert auch ein .content unter der TextArea */
+.root.dark .note-content.text-area .content,
+.root.dark .text-area.note-content .content {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 18;
+    -fx-padding: 16;
+}
+
+/* Fokus-Glow wie gehabt */
+.root.dark .note-content:focused {
+    -fx-effect: -cn-editor-focus-shadow;
 }
 
 /* =========================================================
@@ -179,6 +225,7 @@
 .context-menu.dark {
     -fx-background-insets: 0;
     -fx-background-radius: 10;
+}
 }
 
 /* =========================================================
