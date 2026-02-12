@@ -285,17 +285,14 @@
 }
 
 /* =========================================================
-   TREEVIEW – CUSTOM FOLDER ICON SUPPORT
+   TREEVIEW – FIXED DISCLOSURE SPACER (leaf/branch align)
    ========================================================= */
-
-/* Standard Pfeil komplett entfernen */
 .tree-cell .tree-disclosure-node {
-    -fx-padding: 0;
+    -fx-padding: 0 6 0 0;
+    -fx-min-width: 16;
+    -fx-pref-width: 16;
+    -fx-max-width: 16;
     -fx-background-color: transparent;
-    -fx-shape: "";
-    -fx-min-width: 0;
-    -fx-pref-width: 0;
-    -fx-max-width: 0;
 }
 
 .tree-cell .tree-disclosure-node .arrow {
@@ -567,7 +564,6 @@
    DARK MODE – DIALOGS / ALERTS
    (Dialoge haben oft NICHT .root als Root-Node, daher an .dialog-pane.dark binden)
    ========================================================= */
-
 .dialog-pane.dark {
     -fx-background-color: rgba(17,24,39,0.96);
 }
