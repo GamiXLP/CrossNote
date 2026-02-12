@@ -418,6 +418,7 @@ class MainController {
             service = service,
             notebookRepo = notebookRepo,
             noteRepo = noteRepo,
+            themeManager = themeManager,
             onAfterChange = { notebookTreePresenter.refresh() },
             onAfterTrashChange = { trashPresenter.refresh() },
             onClearSelection = { clearEditorAndSelections() },

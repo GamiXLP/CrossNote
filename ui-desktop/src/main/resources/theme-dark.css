@@ -180,3 +180,33 @@
     -fx-background-insets: 0;
     -fx-background-radius: 10;
 }
+
+/* =========================================================
+   CrossNote Dialog – Darkmode
+   ========================================================= */
+
+.dialog-pane.dark.cn-dialog {
+    -fx-background-color: rgba(17,24,39,0.96);
+    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.45), 28, 0.25, 0, 12);
+}
+
+/* Content darf keine Card sein */
+.dialog-pane.dark.cn-dialog .content,
+.dialog-pane.dark.cn-dialog .content > * {
+    -fx-background-color: transparent;
+}
+
+/* Header */
+.dialog-pane.dark.cn-dialog .cn-dialog-header {
+    -fx-background-color: rgba(17,24,39,0.96);
+    -fx-border-color: rgba(255,255,255,0.10);
+}
+
+.dialog-pane.dark.cn-dialog .cn-dialog-title {
+    -fx-text-fill: #e5e7eb;
+}
+
+.dialog-pane.dark.cn-dialog > .content {
+    -fx-background-color: rgba(17,24,39,0.96);
+}

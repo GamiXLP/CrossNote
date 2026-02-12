@@ -284,3 +284,74 @@
     -fx-background-color: transparent;
     -fx-padding: 0;
 }
+
+/* =========================================================
+   CrossNote Dialog – Rounded Card (klick-sicher)
+   ========================================================= */
+
+/* DialogPane selbst ist die Card */
+.dialog-pane.cn-dialog {
+    -fx-background-color: rgba(255,255,255,0.96);
+    -fx-background-radius: 18;
+    -fx-border-radius: 18;
+    -fx-border-color: rgba(15,23,42,0.08);
+    -fx-border-width: 1;
+    -fx-effect: dropshadow(gaussian, rgba(15,23,42,0.20), 30, 0.25, 0, 10);
+    -fx-padding: 0;
+}
+
+/* Wichtig: Content darf NICHT über ButtonBar liegen */
+.dialog-pane.cn-dialog .content,
+.dialog-pane.cn-dialog .content > * {
+    -fx-background-color: transparent;
+}
+
+/* Header */
+.dialog-pane.cn-dialog .cn-dialog-header {
+    -fx-padding: 14 18;
+    -fx-background-color: rgba(255,255,255,0.96);
+    -fx-background-radius: 18 18 0 0;
+    -fx-border-color: rgba(15,23,42,0.08);
+    -fx-border-width: 0 0 1 0;
+}
+
+.dialog-pane.cn-dialog .cn-dialog-title {
+    -fx-font-size: 15px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #0f172a;
+}
+
+/* Label clean (kein Kreis etc.) */
+.dialog-pane.cn-dialog .cn-dialog-field-label {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+/* Counter */
+.dialog-pane.cn-dialog .cn-dialog-counter {
+    -fx-padding: 2 0 0 0;
+    -fx-opacity: 0.75;
+}
+
+/* ButtonBar */
+.dialog-pane.cn-dialog .button-bar {
+    -fx-background-color: transparent;
+    -fx-padding: 10 18 14 18;
+}
+
+/* Buttons */
+.dialog-pane.cn-dialog .button {
+    -fx-background-radius: 12;
+    -fx-padding: 8 18;
+}
+
+/* Dialog Window komplett transparent */
+.dialog-pane.cn-dialog {
+    -fx-background-color: transparent;
+}
+
+/* Card bleibt sichtbar */
+.dialog-pane.cn-dialog > .content {
+    -fx-background-color: rgba(255,255,255,0.96);
+    -fx-background-radius: 18;
+}
