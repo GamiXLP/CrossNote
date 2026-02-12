@@ -57,6 +57,9 @@ import javafx.scene.layout.HBox
 import javafx.scene.layout.Priority
 import java.nio.file.Paths
 import javafx.scene.control.TextField as FxTextField
+import javafx.scene.control.SelectionMode
+import javafx.scene.input.KeyCode
+import javafx.scene.input.KeyEvent
 
 class MainController {
 
@@ -300,6 +303,77 @@ class MainController {
                 }
             }
         }
+        TVtrashcan.selectionModel.selectionMode = javafx.scene.control.SelectionMode.MULTIPLE
+
+        TVtrashcan.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED) { e ->
+            if (e.code != javafx.scene.input.KeyCode.DELETE) return@addEventFilter
+
+            val selectedNodes = TVtrashcan.selectionModel.selectedItems
+                .mapNotNull { it.value }
+                .filter { it !is TrashNode.Root }
+
+            if (selectedNodes.isEmpty()) return@addEventFilter
+
+            val folders = selectedNodes.filterIsInstance<TrashNode.FolderBranch>()
+            val notes = selectedNodes.filterIsInstance<TrashNode.NoteLeaf>()
+
+            // Ordner: endgültig löschen inkl. Inhalt (Confirm ist bereits im Presenter drin)
+            if (folders.isNotEmpty()) {
+                val ok = Dialogs.confirm(
+                    title = "Endgültig löschen",
+                    header = if (folders.size == 1)
+                        "Ordner '${folders[0].name}' endgültig löschen?"
+                    else
+                        "${folders.size} Ordner endgültig löschen?",
+                    content = "Die Ordner inkl. Unterordner und Notizen werden dauerhaft entfernt."
+                )
+                if (!ok) {
+                    e.consume()
+                    return@addEventFilter
+                }
+
+                folders.forEach { f -> trashPresenter.purgeTrashedNotebookRecursively(f.notebookId) }
+
+                TVtrashcan.selectionModel.clearSelection()
+                e.consume()
+                return@addEventFilter
+            }
+
+            // Nur Notizen: endgültig löschen (Confirm ist bereits im Presenter drin)
+            if (notes.isNotEmpty()) {
+                val ok = Dialogs.confirm(
+                    title = "Endgültig löschen",
+                    header = if (notes.size == 1)
+                        "Notiz '${notes[0].title}' endgültig löschen?"
+                    else
+                        "${notes.size} Notizen endgültig löschen?",
+                    content = "Die Notizen werden dauerhaft entfernt."
+                )
+                if (!ok) {
+                    e.consume()
+                    return@addEventFilter
+                }
+
+                notes.forEach { n -> trashPresenter.purgeTrashedNote(n.noteId) }
+
+                TVtrashcan.selectionModel.clearSelection()
+                e.consume()
+            }
+        }
+        TVtrashcan.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED) { e ->
+            // ESC -> Auswahl löschen
+            if (e.code == javafx.scene.input.KeyCode.ESCAPE) {
+                TVtrashcan.selectionModel.clearSelection()
+                e.consume()
+                return@addEventFilter
+            }
+
+            // STRG+A -> alles auswählen
+            if (e.code == javafx.scene.input.KeyCode.A && e.isControlDown) {
+                TVtrashcan.selectionModel.selectAll()
+                e.consume()
+            }
+        }
     }
 
     private fun setupSavestates() {
@@ -352,6 +426,24 @@ class MainController {
     }
 
     private fun setupNotebookTreeUi() {
+        TVnotebook.selectionModel.selectionMode =
+            javafx.scene.control.SelectionMode.MULTIPLE
+
+        TVnotebook.addEventFilter(KeyEvent.KEY_PRESSED) { e ->
+            // ESC -> Auswahl löschen
+            if (e.code == KeyCode.ESCAPE) {
+                TVnotebook.selectionModel.clearSelection()
+                e.consume()
+                return@addEventFilter
+            }
+
+            // STRG+A -> alles auswählen (nur im Tree)
+            if (e.code == KeyCode.A && e.isControlDown) {
+                TVnotebook.selectionModel.selectAll()
+                e.consume()
+            }
+        }
+
         TVnotebook.setCellFactory {
             NotebookTreeCell(
                 service = service,
@@ -372,6 +464,82 @@ class MainController {
                 onCreateNotebook = { parent -> notebookActions.createNotebookDialog(parent) },
                 onTrashNotebookRecursively = { nbId -> notebookActions.trashNotebookRecursively(nbId) }
             )
+        }
+
+        // ✅ Delete-Taste: ausgewählte Elemente in den Papierkorb verschieben / löschen
+        TVnotebook.addEventFilter(KeyEvent.KEY_PRESSED) { e ->
+            if (e.code != KeyCode.DELETE) return@addEventFilter
+
+            val selectedNodes = TVnotebook.selectionModel.selectedItems
+                .mapNotNull { it.value }
+                .filter { it !is NavNode.RootHeader }
+
+            if (selectedNodes.isEmpty()) return@addEventFilter
+
+            val selectedFolders = selectedNodes.filterIsInstance<NavNode.NotebookBranch>()
+            val selectedNotes = selectedNodes.filterIsInstance<NavNode.NoteLeaf>()
+
+            // Wenn mindestens ein Ordner dabei ist: bestätigen, dann rekursiv trashen
+            if (selectedFolders.isNotEmpty()) {
+                val folderCount = selectedFolders.size
+                val header = if (folderCount == 1)
+                    "Ordner '${selectedFolders[0].name}' wirklich löschen?"
+                else
+                    "$folderCount Ordner wirklich löschen?"
+
+                val ok = Dialogs.confirm(
+                    title = "Ordner löschen",
+                    header = header,
+                    content = "Die Ordner (inkl. Unterordner und Notizen) werden in den Papierkorb verschoben."
+                )
+                if (!ok) {
+                    e.consume()
+                    return@addEventFilter
+                }
+
+                selectedFolders.forEach { f ->
+                    notebookActions.trashNotebookRecursively(f.notebookId)
+                }
+
+                // Nach Ordner-Delete ist ein separater Note-Delete riskant (Notizen könnten schon mit getrasht worden sein)
+                TVnotebook.selectionModel.clearSelection()
+                editor.resetEditor()
+                notebookTreePresenter.refresh()
+                trashPresenter.refresh()
+
+                e.consume()
+                return@addEventFilter
+            }
+
+            // Nur Notizen selektiert: bestätigen, dann löschen (Papierkorb)
+            if (selectedNotes.isNotEmpty()) {
+                val noteCount = selectedNotes.size
+                val header = if (noteCount == 1)
+                    "Notiz '${selectedNotes[0].title}' wirklich löschen?"
+                else
+                    "$noteCount Notizen wirklich löschen?"
+
+                val ok = Dialogs.confirm(
+                    title = "Notiz löschen",
+                    header = header,
+                    content = "Die Notizen werden in den Papierkorb verschoben."
+                )
+                if (!ok) {
+                    e.consume()
+                    return@addEventFilter
+                }
+
+                selectedNotes.forEach { n ->
+                    editor.deleteNote(n.noteId)
+                }
+
+                TVnotebook.selectionModel.clearSelection()
+                editor.resetEditor()
+                notebookTreePresenter.refresh()
+                trashPresenter.refresh()
+
+                e.consume()
+            }
         }
 
         val rootMenu = ContextMenu(

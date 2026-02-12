@@ -49,6 +49,9 @@ class NotebookTreePresenter(
 
         // Auswahl
         treeView.selectionModel.selectedItemProperty().addListener { _, _, new ->
+            // ✅ Bei Multi-Select nichts automatisch öffnen/wechseln
+            if (treeView.selectionModel.selectedItems.size != 1) return@addListener
+
             val node = new?.value ?: return@addListener
             when (node) {
                 is NavNode.NoteLeaf -> onOpenNote(node.noteId.value)

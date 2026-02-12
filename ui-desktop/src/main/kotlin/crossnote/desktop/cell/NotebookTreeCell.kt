@@ -183,6 +183,57 @@ class NotebookTreeCell(
             val node = item ?: return@setOnContextMenuRequested
             treeView?.selectionModel?.select(index)
 
+            val tv = treeView ?: return@setOnContextMenuRequested
+            val selectedValues = tv.selectionModel.selectedItems
+                .mapNotNull { it.value }
+                .filter { it !is NavNode.RootHeader }
+
+            if (selectedValues.size >= 2) {
+                val folders = selectedValues.filterIsInstance<NavNode.NotebookBranch>()
+                val notes = selectedValues.filterIsInstance<NavNode.NoteLeaf>()
+
+                val deleteLabel = buildString {
+                    append("🗑 Auswahl löschen (")
+                    append(selectedValues.size)
+                    append(")")
+                }
+
+                val bulkMenu = ContextMenu(
+                    MenuItem(deleteLabel).apply {
+                        setOnAction {
+                            // Ordner zuerst (rekursiv)
+                            if (folders.isNotEmpty()) {
+                                val ok = Dialogs.confirm(
+                                    title = "Löschen",
+                                    header = "${folders.size} Ordner löschen?",
+                                    content = "Die Ordner inkl. Unterordner und Notizen werden in den Papierkorb verschoben."
+                                )
+                                if (!ok) return@setOnAction
+
+                                folders.forEach { f -> onTrashNotebookRecursively(f.notebookId) }
+                            } else {
+                                // Nur Notizen
+                                val ok = Dialogs.confirm(
+                                    title = "Notiz löschen",
+                                    header = "${notes.size} Notizen löschen?",
+                                    content = "Die Notizen werden in den Papierkorb verschoben."
+                                )
+                                if (!ok) return@setOnAction
+
+                                notes.forEach { n -> onDeleteNote(n.noteId) }
+                            }
+
+                            tv.selectionModel.clearSelection()
+                        }
+                    }
+                )
+
+                themeManager.register(bulkMenu)
+                contextMenu = bulkMenu
+                e.consume()
+                return@setOnContextMenuRequested
+            }
+
             val menu = when (node) {
 
                 is NavNode.NoteLeaf -> ContextMenu(
