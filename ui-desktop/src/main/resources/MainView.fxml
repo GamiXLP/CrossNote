@@ -21,7 +21,6 @@
 
 <BorderPane
         styleClass="root"
-        stylesheets="@styles.css"
         xmlns="http://javafx.com/javafx/21"
         xmlns:fx="http://javafx.com/fxml/1"
         fx:controller="crossnote.desktop.controller.MainController">

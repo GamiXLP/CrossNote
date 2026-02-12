@@ -1,0 +1,167 @@
+.root.dark {
+    -cn-bg: #0f172a;
+    -cn-text: #e5e7eb;
+
+    -cn-topbar-bg: rgba(17,24,39,0.92);
+    -cn-topbar-border: rgba(255,255,255,0.10);
+
+    -cn-title: #e5e7eb;
+
+    -cn-sidebar-border: rgba(255,255,255,0.10);
+
+    -cn-card-bg: rgba(17,24,39,0.92);
+    -cn-card-bg-soft: rgba(17,24,39,0.92);
+    -cn-card-border: rgba(255,255,255,0.10);
+    -cn-card-shadow: dropshadow(gaussian, rgba(0,0,0,0.35), 28, 0.18, 0, 12);
+
+    -cn-section-title: #e5e7eb;
+
+    -cn-input-bg: rgba(255,255,255,0.08);
+    -cn-input-bg-focus: rgba(255,255,255,0.10);
+    -cn-input-border-focus: rgba(70,120,255,0.55);
+    -cn-input-focus-shadow: dropshadow(gaussian, rgba(70,120,255,0.22), 16, 0.25, 0, 0);
+    -cn-input-text: #ffffff;
+    -cn-input-prompt: rgba(229,231,235,0.65);
+
+    /* “papierartig, nur dunkler” */
+    -cn-paper-border: rgba(255,255,255,0.14);
+    -cn-paper-bg: rgba(255,255,255,0.06);
+    -cn-editor-focus-shadow: dropshadow(gaussian, rgba(70,120,255,0.18), 20, 0.25, 0, 0);
+
+    -cn-accent: #4678ff;
+    -cn-accent-hover: #3a66d6;
+    -cn-accent-soft: rgba(255,255,255,0.08);
+    -cn-accent-soft-hover: rgba(255,255,255,0.10);
+
+    -cn-icon-stroke: #d0d7ff;
+    -cn-icon-fill: #d0d7ff;
+
+    -cn-tree-text: #e5e7eb;
+    -cn-tree-hover: rgba(255,255,255,0.08);
+    -cn-tree-selected: rgba(70,120,255,0.22);
+    -cn-tree-arrow: rgba(229,231,235,0.85);
+
+    -cn-scroll-thumb: rgba(255,255,255,0.35);
+    -cn-scroll-thumb-hover: rgba(255,255,255,0.55);
+}
+
+/* Editor layers extra sicher */
+.root.dark .note-content,
+.root.dark .note-content .content,
+.root.dark .note-content .scroll-pane,
+.root.dark .note-content .scroll-pane .viewport {
+    -fx-background-color: -cn-paper-bg;
+    -fx-control-inner-background: -cn-paper-bg;
+    -fx-text-fill: -cn-text;
+    -fx-prompt-text-fill: rgba(229,231,235,0.45);
+}
+
+/* =========================================================
+   DARK MODE – DIALOGS / ALERTS
+   ========================================================= */
+.dialog-pane.dark {
+    -fx-background-color: rgba(17,24,39,0.96);
+}
+
+.dialog-pane.dark .header-panel {
+    -fx-background-color: rgba(17,24,39,0.96);
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-border-width: 0 0 1 0;
+}
+
+.dialog-pane.dark .header-panel .label {
+    -fx-text-fill: #e5e7eb;
+    -fx-font-weight: 600;
+}
+
+.dialog-pane.dark .content .label,
+.dialog-pane.dark .label {
+    -fx-text-fill: #e5e7eb;
+}
+
+.dialog-pane.dark .check-box { -fx-text-fill: #e5e7eb; }
+
+.dialog-pane.dark .check-box .box {
+    -fx-background-color: rgba(255,255,255,0.08);
+    -fx-border-color: rgba(255,255,255,0.18);
+}
+
+.dialog-pane.dark .button-bar {
+    -fx-background-color: rgba(17,24,39,0.96);
+}
+
+.dialog-pane.dark .button {
+    -fx-background-color: rgba(255,255,255,0.10);
+    -fx-text-fill: #e5e7eb;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-border-color: rgba(255,255,255,0.12);
+}
+
+.dialog-pane.dark .button:hover {
+    -fx-background-color: rgba(255,255,255,0.16);
+}
+
+/* =========================================================
+   DARK MODE – CONTEXT MENUS
+   ========================================================= */
+.context-menu.dark {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.context-menu.dark .context-menu-content {
+    -fx-background-color: rgba(17,24,39,0.98);
+    -fx-background-insets: 0;
+    -fx-background-radius: 10;
+    -fx-padding: 6;
+
+    -fx-border-color: rgba(255,255,255,0.12);
+    -fx-border-width: 1;
+    -fx-border-radius: 10;
+
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.45), 18, 0.20, 0, 8);
+}
+
+.context-menu.dark .scroll-pane,
+.context-menu.dark .scroll-pane .viewport,
+.context-menu.dark .scroll-pane .content {
+    -fx-background-color: transparent;
+}
+
+.context-menu.dark .menu-item {
+    -fx-background-color: transparent;
+    -fx-padding: 8 12;
+}
+
+.context-menu.dark .menu-item .label { -fx-text-fill: #e5e7eb; }
+
+.context-menu.dark .menu-item:focused,
+.context-menu.dark .menu-item:hover {
+    -fx-background-color: rgba(255,255,255,0.10);
+    -fx-background-radius: 8;
+}
+
+.context-menu.dark .menu-item:disabled .label {
+    -fx-text-fill: rgba(229,231,235,0.35);
+}
+
+.context-menu.dark .separator:horizontal .line {
+    -fx-border-color: rgba(255,255,255,0.12);
+    -fx-border-width: 1 0 0 0;
+}
+
+/* Hard override */
+.context-menu.dark,
+.context-menu.dark .context-menu-content,
+.context-menu.dark .scroll-pane,
+.context-menu.dark .scroll-pane .viewport {
+    -fx-background-color: rgba(17,24,39,0.98);
+}
+
+.context-menu.dark {
+    -fx-background-insets: 0;
+    -fx-background-radius: 10;
+}

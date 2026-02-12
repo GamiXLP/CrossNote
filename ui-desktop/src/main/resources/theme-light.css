@@ -1,0 +1,45 @@
+.root {
+    -cn-bg: #e6efff;
+    -cn-text: #1f2937;
+
+    -cn-topbar-bg: #e6efff;
+    -cn-topbar-border: rgba(15,23,42,0.10);
+
+    -cn-title: #0f1e4d;
+
+    -cn-sidebar-border: rgba(15,23,42,0.08);
+
+    -cn-card-bg: rgba(255,255,255,0.96);
+    -cn-card-bg-soft: rgba(255,255,255,0.92);
+    -cn-card-border: rgba(15,23,42,0.08);
+    -cn-card-shadow: dropshadow(gaussian, rgba(15,23,42,0.10), 26, 0.14, 0, 12);
+
+    -cn-section-title: #0f172a;
+
+    -cn-input-bg: rgba(15,23,42,0.04);
+    -cn-input-bg-focus: rgba(255,255,255,1.0);
+    -cn-input-border-focus: rgba(70,120,255,0.55);
+    -cn-input-focus-shadow: dropshadow(gaussian, rgba(70,120,255,0.18), 14, 0.25, 0, 0);
+    -cn-input-text: #0f172a;
+    -cn-input-prompt: rgba(15,23,42,0.45);
+
+    -cn-paper-border: rgba(220,200,120,0.65);
+    -cn-paper-bg: linear-gradient(to bottom, #fff8d8, #fff1b8);
+    -cn-editor-focus-shadow: dropshadow(gaussian, rgba(70,120,255,0.16), 20, 0.25, 0, 0);
+
+    -cn-accent: #4678ff;
+    -cn-accent-hover: #3a66d6;
+    -cn-accent-soft: rgba(70,120,255,0.12);
+    -cn-accent-soft-hover: rgba(70,120,255,0.18);
+
+    -cn-icon-stroke: #4678ff;
+    -cn-icon-fill: #4678ff;
+
+    -cn-tree-text: #0f172a;
+    -cn-tree-hover: rgba(70,120,255,0.12);
+    -cn-tree-selected: rgba(70,120,255,0.20);
+    -cn-tree-arrow: rgba(15,23,42,0.55);
+
+    -cn-scroll-thumb: rgba(15,23,42,0.18);
+    -cn-scroll-thumb-hover: rgba(15,23,42,0.28);
+}

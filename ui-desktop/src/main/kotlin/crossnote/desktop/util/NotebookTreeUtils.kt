@@ -78,4 +78,5 @@ object NotebookTreeUtils {
             scaleY = 0.4
         }
     }
+
 }
