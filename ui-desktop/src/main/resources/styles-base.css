@@ -264,6 +264,46 @@
 .tree-cell:hover .graphic { -fx-opacity: 0.95; }
 .tree-cell:selected .graphic { -fx-opacity: 1; }
 
+
+/* ================= LISTVIEW (match TreeView, fixes darkmode white background) ================= */
+/* Deine ListView hat styleClass="sidebar-list" -> daher zielgenau */
+.sidebar-list.list-view,
+.sidebar-list.list-view .virtual-flow {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+/* Zellen (Text/Farbe/Hover/Selected) */
+.sidebar-list.list-view .list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 8 10 8 6;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+
+    -fx-text-fill: -cn-tree-text;
+    -fx-font-size: 13.2px;
+}
+
+.sidebar-list.list-view .list-cell:hover {
+    -fx-background-color: -cn-tree-hover;
+}
+
+.sidebar-list.list-view .list-cell:selected {
+    -fx-background-color: -cn-tree-selected;
+    -fx-font-weight: 700;
+}
+
+/* Leere Zellen sauber (sonst „weiße Streifen“ je nach Skin) */
+.sidebar-list.list-view .list-cell:empty {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+.sidebar-list.list-view .list-cell:empty:hover,
+.sidebar-list.list-view .list-cell:empty:selected {
+    -fx-background-color: transparent;
+}
+
+
 /* ================= SEPARATOR ================= */
 .separator { -fx-opacity: 0.25; }
 
