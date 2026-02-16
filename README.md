@@ -42,6 +42,7 @@ Die Anwendung richtet sich an Nutzerinnen und Nutzer, die ihre Notizen lokal ver
 - Suchfunktion
 - Lokale Speicherung mittels SQLite
 - Desktop-Oberfläche auf Basis von JavaFX
+- Geräteübergreifende Synchronisation
 
 ## Geplante / Erweiterbare Funktionen
 
@@ -121,7 +122,7 @@ Abhängig von `core-application`.
 # Voraussetzungen
 
 - Java JDK 17 oder höher
-- Windows, Linux oder macOS
+- Windows und/oder Linux
 - Keine separate Gradle-Installation notwendig
 
 ---
@@ -134,7 +135,7 @@ Abhängig von `core-application`.
 .\gradlew :ui-desktop:run --no-configuration-cache
 ```
 
-## Linux / macOS
+## Linux
 
 ```bash
 ./gradlew :ui-desktop:run --no-configuration-cache
