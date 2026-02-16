@@ -45,7 +45,6 @@ Die Anwendung richtet sich an Nutzerinnen und Nutzer, die ihre Notizen lokal ver
 
 ## Geplante / Erweiterbare Funktionen
 
-- Geräteübergreifende Synchronisation
 - Konfliktauflösungsmechanismen
 - Import/Export (z. B. Markdown, JSON)
 - Android-Client
