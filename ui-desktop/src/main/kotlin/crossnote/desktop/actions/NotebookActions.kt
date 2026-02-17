@@ -1,6 +1,8 @@
 package crossnote.desktop.actions
 
 import crossnote.app.note.NoteAppService
+import crossnote.desktop.ThemeManager
+import crossnote.desktop.util.DialogsExt
 import crossnote.desktop.util.NotebookTreeUtils
 import crossnote.domain.note.NoteId
 import crossnote.domain.note.Notebook
@@ -10,20 +12,19 @@ import crossnote.domain.note.ValidationException
 import crossnote.domain.note.validateNotebookName
 import crossnote.infra.persistence.SqliteNoteRepository
 import crossnote.infra.persistence.SqliteNotebookRepository
-import crossnote.desktop.util.DialogsExt
-import crossnote.desktop.ThemeManager
-import javafx.scene.control.TextInputDialog
-import javafx.scene.control.TextFormatter
-import java.time.Instant
-import java.util.UUID
 import javafx.geometry.Insets
+import javafx.geometry.Pos
+import javafx.scene.control.Label
+import javafx.scene.control.TextFormatter
+import javafx.scene.control.TextInputDialog
+import javafx.scene.image.Image
+import javafx.scene.image.ImageView
 import javafx.scene.layout.HBox
 import javafx.scene.layout.Priority
 import javafx.scene.layout.Region
 import javafx.scene.layout.VBox
-import javafx.scene.control.Label
-import javafx.scene.image.Image
-import javafx.scene.image.ImageView
+import java.time.Instant
+import java.util.UUID
 
 class NotebookActions(
     private val service: NoteAppService,
@@ -38,24 +39,124 @@ class NotebookActions(
 
     fun createNotebookDialog(parent: NotebookId?) {
 
-        val dialog = TextInputDialog().apply {
-            title = "Neuer Ordner"
-            headerText = if (parent == null) "Ordner anlegen" else "Unterordner anlegen"
+        val dialog = buildNotebookNameDialog(
+            windowTitle = "Neuer Ordner",
+            headerTitle = if (parent == null) "Ordner anlegen" else "Unterordner anlegen",
+            initialText = ""
+        )
+
+        val result = dialog.showAndWait()
+        if (result.isEmpty) return
+
+        val raw = result.get()
+
+        val name = try {
+            validateNotebookName(raw)
+        } catch (e: ValidationException) {
+            DialogsExt.warn(e.message ?: "Ungültiger Ordnername")
+            return
+        }
+
+        val id = NotebookId(UUID.randomUUID().toString())
+        notebookRepo.save(Notebook(id, name, parentId = parent))
+
+        onAfterChange()
+    }
+
+    /**
+     * ✅ NEU: Ordner umbenennen über Dialog
+     */
+    fun renameNotebookDialog(notebookId: NotebookId, currentName: String) {
+
+        val dialog = buildNotebookNameDialog(
+            windowTitle = "Ordner umbenennen",
+            headerTitle = "Ordner umbenennen",
+            initialText = currentName
+        )
+
+        val result = dialog.showAndWait()
+        if (result.isEmpty) return
+
+        val raw = result.get()
+
+        val newName = try {
+            validateNotebookName(raw)
+        } catch (e: ValidationException) {
+            DialogsExt.warn(e.message ?: "Ungültiger Ordnername")
+            return
+        }
+
+        // Keine Änderung -> nichts tun
+        if (newName == currentName) return
+
+        // Notebook holen (Repo-API kann variieren -> wir machen es robust)
+        val existing = try {
+            notebookRepo.findById(notebookId)
+        } catch (_: Throwable) {
+            null
+        } ?: notebookRepo.findAll().firstOrNull { it.id == notebookId }
+
+        if (existing == null) {
+            DialogsExt.warn("Ordner nicht gefunden.")
+            return
+        }
+
+        // Save mit neuem Namen
+        notebookRepo.save(existing.copy(name = newName))
+        onAfterChange()
+    }
+
+    fun trashNotebookRecursively(notebookId: NotebookId) {
+        val idsToTrash = NotebookTreeUtils.collectSubtreeIds(notebookRepo, notebookId)
+        val now = Instant.now()
+
+        // notes -> trash
+        idsToTrash.forEach { nbId ->
+            noteRepo.listNoteSummariesInNotebook(nbId).forEach { n ->
+                service.moveToTrash(NoteId(n.id))
+            }
+        }
+
+        // folders -> trash
+        idsToTrash.forEach { nbId ->
+            notebookRepo.moveToTrash(nbId, now)
+        }
+
+        onSelectedNotebookChanged(null)
+        onClearSelection()
+
+        onAfterChange()
+        onAfterTrashChange()
+    }
+
+    // =========================================================
+    // Shared Dialog Builder (Create + Rename)
+    // =========================================================
+    private fun buildNotebookNameDialog(
+        windowTitle: String,
+        headerTitle: String,
+        initialText: String
+    ): TextInputDialog {
+
+        val dialog = TextInputDialog(initialText).apply {
+            title = windowTitle
+            headerText = null
             contentText = "Name:"
         }
 
-        // ✅ wichtig: Darkmode auf Dialog anwenden
+        // ✅ wichtig: Darkmode/Theme auf Dialog anwenden
         themeManager.register(dialog)
 
         // ✅ JavaFX-Standard-"?" entfernen
         dialog.graphic = null
         dialog.dialogPane.graphic = null
+
         dialog.dialogPane.stylesheets.add(
             NotebookActions::class.java.getResource("/styles.css")!!.toExternalForm()
         )
         dialog.dialogPane.styleClass.add("cn-dialog")
 
-// ✅ Custom Header im CrossNote-Style
+        // ✅ Custom Header im CrossNote-Style
         val icon = ImageView(
             Image(NotebookActions::class.java.getResourceAsStream("/images/CrossNote_Icon.png"))
         ).apply {
@@ -65,7 +166,7 @@ class NotebookActions(
             styleClass.add("cn-dialog-appicon")
         }
 
-        val title = Label(if (parent == null) "Ordner anlegen" else "Unterordner anlegen").apply {
+        val title = Label(headerTitle).apply {
             styleClass.add("cn-dialog-title")
         }
 
@@ -73,9 +174,9 @@ class NotebookActions(
 
         val header = HBox(10.0, icon, title, spacer).apply {
             styleClass.add("cn-dialog-header")
+            alignment = Pos.CENTER_LEFT
         }
 
-        dialog.headerText = null
         dialog.dialogPane.header = header
 
         // --- Zeichenlimit ---
@@ -85,8 +186,10 @@ class NotebookActions(
         }
 
         // --- Counter-Label ---
-        val counterLabel = javafx.scene.control.Label()
-        counterLabel.opacity = 0.7
+        val counterLabel = Label().apply {
+            opacity = 0.7
+            styleClass.add("cn-dialog-counter")
+        }
 
         fun updateCounter(text: String?) {
             val len = (text ?: "").length
@@ -112,16 +215,12 @@ class NotebookActions(
         }
 
         val row = HBox(10.0, nameLabel, nameField).apply {
-            alignment = javafx.geometry.Pos.CENTER_LEFT
+            alignment = Pos.CENTER_LEFT
         }
 
         HBox.setHgrow(nameField, Priority.ALWAYS)
 
-        counterLabel.apply {
-            opacity = 0.7
-            padding = Insets(0.0, 0.0, 4.0, 0.0)
-            styleClass.add("cn-dialog-counter")
-        }
+        counterLabel.padding = Insets(0.0, 0.0, 4.0, 0.0)
 
         val wrapper = VBox(10.0).apply {
             padding = Insets(14.0, 18.0, 10.0, 18.0)
@@ -142,47 +241,12 @@ class NotebookActions(
         dialog.setOnShown {
             val stage = dialog.dialogPane.scene.window as? javafx.stage.Stage
             stage?.scene?.fill = javafx.scene.paint.Color.TRANSPARENT
+
+            // Cursor direkt in Feld + alles markieren (nice UX beim Umbenennen)
+            dialog.editor.requestFocus()
+            dialog.editor.selectAll()
         }
 
-        // --- Dialog anzeigen ---
-        val result = dialog.showAndWait()
-        if (result.isEmpty) return
-
-        val raw = result.get()
-
-        val name = try {
-            validateNotebookName(raw)
-        } catch (e: ValidationException) {
-            DialogsExt.warn(e.message ?: "Ungültiger Ordnername")
-            return
-        }
-
-        val id = NotebookId(UUID.randomUUID().toString())
-        notebookRepo.save(Notebook(id, name, parentId = parent))
-
-        onAfterChange()
-    }
-
-    fun trashNotebookRecursively(notebookId: NotebookId) {
-        val idsToTrash = NotebookTreeUtils.collectSubtreeIds(notebookRepo, notebookId)
-        val now = Instant.now()
-
-        // notes -> trash
-        idsToTrash.forEach { nbId ->
-            noteRepo.listNoteSummariesInNotebook(nbId).forEach { n ->
-                service.moveToTrash(NoteId(n.id))
-            }
-        }
-
-        // folders -> trash
-        idsToTrash.forEach { nbId ->
-            notebookRepo.moveToTrash(nbId, now)
-        }
-
-        onSelectedNotebookChanged(null)
-        onClearSelection()
-
-        onAfterChange()
-        onAfterTrashChange()
+        return dialog
     }
 }

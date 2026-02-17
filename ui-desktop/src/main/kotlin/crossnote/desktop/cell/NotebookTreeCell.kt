@@ -18,7 +18,6 @@ import javafx.scene.input.ClipboardContent
 import javafx.scene.input.DragEvent
 import javafx.scene.input.Dragboard
 import javafx.scene.input.TransferMode
-import javafx.geometry.Insets
 
 class NotebookTreeCell(
     private val service: NoteAppService,
@@ -31,6 +30,9 @@ class NotebookTreeCell(
     private val onStartNewNote: (targetNotebookId: NotebookId?) -> Unit,
     private val onCreateNotebook: (parent: NotebookId?) -> Unit,
     private val onTrashNotebookRecursively: (notebookId: NotebookId) -> Unit,
+
+    // ✅ NEU: Rename-Callback
+    private val onRenameNotebook: (notebookId: NotebookId, currentName: String) -> Unit,
 ) : TreeCell<NavNode>() {
 
     private var expandedListener: ChangeListener<Boolean>? = null
@@ -188,6 +190,7 @@ class NotebookTreeCell(
                 .mapNotNull { it.value }
                 .filter { it !is NavNode.RootHeader }
 
+            // Multi-Select Menü (bulk delete)
             if (selectedValues.size >= 2) {
                 val folders = selectedValues.filterIsInstance<NavNode.NotebookBranch>()
                 val notes = selectedValues.filterIsInstance<NavNode.NoteLeaf>()
@@ -246,6 +249,10 @@ class NotebookTreeCell(
                 )
 
                 is NavNode.NotebookBranch -> ContextMenu(
+                    MenuItem("✏ Ordner umbenennen").apply {
+                        setOnAction { onRenameNotebook(node.notebookId, node.name) }
+                    },
+                    SeparatorMenuItem(),
                     MenuItem("＋ Neue Notiz hier").apply {
                         setOnAction { onStartNewNote(node.notebookId) }
                     },
