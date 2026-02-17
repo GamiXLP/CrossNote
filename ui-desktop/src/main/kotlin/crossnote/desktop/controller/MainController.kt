@@ -463,7 +463,12 @@ class MainController {
                     uiState.applyCenterMode()
                 },
                 onCreateNotebook = { parent -> notebookActions.createNotebookDialog(parent) },
-                onTrashNotebookRecursively = { nbId -> notebookActions.trashNotebookRecursively(nbId) }
+                onTrashNotebookRecursively = { nbId -> notebookActions.trashNotebookRecursively(nbId) },
+
+                // ✅ NEU: Rename aus Kontextmenü
+                onRenameNotebook = { nbId, currentName ->
+                    notebookActions.renameNotebookDialog(nbId, currentName)
+                }
             )
         }
 
@@ -502,7 +507,6 @@ class MainController {
                     notebookActions.trashNotebookRecursively(f.notebookId)
                 }
 
-                // Nach Ordner-Delete ist ein separater Note-Delete riskant (Notizen könnten schon mit getrasht worden sein)
                 TVnotebook.selectionModel.clearSelection()
                 editor.resetEditor()
                 notebookTreePresenter.refresh()
