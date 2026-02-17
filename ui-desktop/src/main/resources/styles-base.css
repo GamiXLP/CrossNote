@@ -196,11 +196,13 @@
 .tree-view .virtual-flow {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
+
+    -fx-indent: 24;
 }
 
 .tree-cell {
     -fx-background-color: transparent;
-    -fx-padding: 8 10 8 6;
+    -fx-padding: 8 10 8 8;
     -fx-background-radius: 10;
     -fx-border-radius: 10;
     -fx-text-fill: -cn-tree-text;
@@ -221,19 +223,21 @@
    (WICHTIG: nicht auf 0 setzen, sonst "wandern" Zellen manchmal)
    ========================================================= */
 
+/* Disclosure-Node: Platz für Einrückung behalten, Pfeil nur unsichtbar machen */
 .tree-cell .tree-disclosure-node {
     -fx-padding: 0 6 0 0;
+    -fx-background-color: transparent;
+
+    /* WICHTIG: Breite != 0, sonst keine Einrückung bei Leafs */
     -fx-min-width: 16;
     -fx-pref-width: 16;
     -fx-max-width: 16;
-    -fx-background-color: transparent;
 }
 
-/* Pfeil unsichtbar machen, aber Spacer behalten */
 .tree-cell .tree-disclosure-node .arrow {
-    -fx-background-color: transparent;
-    -fx-shape: "";
-    -fx-padding: 0;
+    -fx-background-color: transparent; /* Pfeil unsichtbar */
+    -fx-shape: null;                  /* Standard-Shape ist ok */
+    -fx-padding: 4;                   /* sorgt für sauberes Layout */
 }
 
 /* Optional: falls irgendwo noch ein Klickbereich nervt */
@@ -260,7 +264,17 @@
 }
 
 /* Graphic spacing */
-.tree-cell .graphic { -fx-padding: 0 6 0 2; }
+/* Icon-Bereich fixieren */
+.tree-cell .graphic {
+    -fx-padding: 0 8 0 2;
+
+    -fx-min-width: 22;
+    -fx-pref-width: 22;
+    -fx-max-width: 22;
+
+    -fx-alignment: CENTER_LEFT;
+}
+
 .tree-cell:hover .graphic { -fx-opacity: 0.95; }
 .tree-cell:selected .graphic { -fx-opacity: 1; }
 

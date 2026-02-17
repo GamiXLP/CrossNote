@@ -2,10 +2,11 @@ package crossnote.desktop.util
 
 import crossnote.domain.note.NotebookId
 import crossnote.infra.persistence.SqliteNotebookRepository
-
+import javafx.geometry.Pos
 import javafx.scene.Group
+import javafx.scene.Node
+import javafx.scene.layout.StackPane
 import javafx.scene.shape.SVGPath
-
 
 object NotebookTreeUtils {
 
@@ -22,7 +23,15 @@ object NotebookTreeUtils {
         return result
     }
 
-    fun createClosedFolderIcon(): Group {
+    private fun iconSlot(icon: Node, width: Double = 40.0): StackPane =
+        StackPane(icon).apply {
+            minWidth = width
+            prefWidth = width
+            maxWidth = width
+            alignment = Pos.CENTER_LEFT
+        }
+
+    fun createClosedFolderIcon(): Node {
         val back = SVGPath().apply {
             content = "M16 17a4 4 0 0 0-4 4v38a4 4 0 0 0 4 4h48a4 4 0 0 0 4-4V29a4 4 0 0 0-4-4H35.4c-.367 0-.711-.177-.924-.475l-.34-.474l-.376-.526l-.377-.525l-3.099-4.329A4 4 0 0 0 27.032 17z"
             fill = javafx.scene.paint.Color.web("#f2994a")
@@ -33,14 +42,15 @@ object NotebookTreeUtils {
             fill = javafx.scene.paint.Color.web("#f2c94c")
         }
 
-        return Group(back, front).apply {
+        val g = Group(back, front).apply {
             scaleX = 0.4
             scaleY = 0.4
         }
+
+        return iconSlot(g, 55.0)
     }
 
-
-    fun createOpenFolderIcon(): Group {
+    fun createOpenFolderIcon(): Node {
         val front = SVGPath().apply {
             content = "M16.104 40.31A8 8 0 0 1 23.638 35h44.686c2.766 0 4.697 2.74 3.767 5.345l-7.143 20A4 4 0 0 1 61.181 63H10.838a2 2 0 0 1-1.883-2.673z"
             fill = javafx.scene.paint.Color.web("#f2c94c")
@@ -51,32 +61,34 @@ object NotebookTreeUtils {
             fill = javafx.scene.paint.Color.web("#f2994a")
         }
 
-        return Group(back, front).apply {
+        val g = Group(back, front).apply {
             scaleX = 0.4
             scaleY = 0.4
         }
+
+        return iconSlot(g, 55.0)
     }
 
-    fun createNoteIcon(): Group {
-
+    fun createNoteIcon(): Node {
         val page = SVGPath().apply {
             content =
                 "M45.17 15.176a4 4 0 0 0-2.828-1.171L24 14.003a4 4 0 0 0-4 4v44a4 4 0 0 0 4 4h32a4 4 0 0 0 4-4V31.66a4 4 0 0 0-1.172-2.83l-.2-.2c.459.527.09 1.37-.628 1.37H48a4 4 0 0 1-4-4V16c0-.71.826-1.08 1.353-.642z"
-
             fill = javafx.scene.paint.Color.web("#f2c94c")
         }
 
         val corner = SVGPath().apply {
             content =
                 "M58.586 28.586L45.414 15.414A.828.828 0 0 0 44 16v10a4 4 0 0 0 4 4h10a.828.828 0 0 0 .586-1.414"
-
             fill = javafx.scene.paint.Color.web("#f2994a")
         }
 
-        return Group(page, corner).apply {
+        val g = Group(page, corner).apply {
             scaleX = 0.4
             scaleY = 0.4
-        }
-    }
 
+            translateX = 3.0
+        }
+
+        return iconSlot(g, 45.0)
+    }
 }
