@@ -58,6 +58,7 @@ import javafx.scene.layout.AnchorPane
 import javafx.scene.layout.GridPane
 import javafx.scene.layout.HBox
 import javafx.scene.layout.Priority
+import javafx.scene.layout.StackPane
 import java.nio.file.Paths
 import javafx.scene.control.TextField as FxTextField
 
@@ -137,6 +138,10 @@ class MainController {
     @FXML lateinit var LBsavestatesTitle: Label
     @FXML lateinit var LBfilenameTitle: Label
     @FXML lateinit var LBlastChangedStatic: Label
+
+    // ---------- Language icon nodes ----------
+    @FXML lateinit var LANG_DE: StackPane
+    @FXML lateinit var LANG_EN: StackPane
 
     // ---------- Editor ----------
     @FXML lateinit var titleField: TextField
@@ -232,16 +237,18 @@ class MainController {
     private fun setupThemeAndI18n() {
         i18n = I18n(settingsRepo)
 
-        // Wichtig: dein ThemeManager muss diesen Konstruktor haben
         themeManager = ThemeManager(settingsRepo, BTNdarkmode, i18n)
         themeManager.bindToSceneRoot()
         Dialogs.init(themeManager)
 
         applyI18n()
+        updateLanguageIcon()
     }
 
     private fun applyI18n() {
-        BTNlanguage.text = if (i18n.currentLang() == "de") i18n.t("lang.de") else i18n.t("lang.en")
+        // Button text optional – wenn du nur Flagge willst, kannst du hier auch "" setzen
+        BTNlanguage.text = ""
+        BTNlanguage.contentDisplay = javafx.scene.control.ContentDisplay.GRAPHIC_ONLY
 
         LBnotesTitle.text = i18n.t("sidebar.notes")
         LBtrashTitle.text = i18n.t("sidebar.trash")
@@ -563,6 +570,7 @@ class MainController {
     fun language_on(@Suppress("UNUSED_PARAMETER") e: ActionEvent) {
         i18n.toggleLang()
         applyI18n()
+        updateLanguageIcon()
     }
 
     private fun onSave() {
@@ -911,6 +919,16 @@ class MainController {
                 Dialogs.error(i18n.t("sync.title"), i18n.t("sync.serverStartFail", t.message ?: ""))
             }
         }
+    }
+
+    private fun updateLanguageIcon() {
+        val isDe = i18n.currentLang().equals("de", ignoreCase = true)
+
+        LANG_DE.isVisible = isDe
+        LANG_DE.isManaged = isDe
+
+        LANG_EN.isVisible = !isDe
+        LANG_EN.isManaged = !isDe
     }
 
     fun close() {
