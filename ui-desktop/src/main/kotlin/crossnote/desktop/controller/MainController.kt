@@ -646,6 +646,9 @@ class MainController {
 
         attachMenu(titleField)
         attachMenu(contentArea)
+
+        attachMenu(TFnotebook)
+        attachMenu(TFtrashcan)
     }
 
     // =========================================================
