@@ -14,6 +14,7 @@ import java.util.WeakHashMap
 class ThemeManager(
     private val settingsRepo: SqliteSettingsRepository,
     private val toggleButton: Button,
+    private val i18n: I18n,
 ) {
     private var darkMode: Boolean = settingsRepo.getBoolean("darkMode", false)
 
@@ -127,7 +128,7 @@ class ThemeManager(
     }
 
     private fun updateToggleText() {
-        toggleButton.text = if (darkMode) "Light Mode" else "Dark Mode"
+        toggleButton.text = if (darkMode) i18n.t("theme.light") else i18n.t("theme.dark")
     }
 
     private fun applyToRoot(root: Parent) {

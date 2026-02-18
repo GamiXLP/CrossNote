@@ -2,6 +2,7 @@ package crossnote.desktop.controller
 
 import crossnote.app.note.NoteAppService
 import crossnote.app.sync.SyncService
+import crossnote.desktop.I18n
 import crossnote.desktop.NavNode
 import crossnote.desktop.ThemeManager
 import crossnote.desktop.TrashNode
@@ -31,8 +32,8 @@ import crossnote.infra.persistence.SystemClock
 import crossnote.infra.persistence.UuidIdGenerator
 import javafx.application.Platform
 import javafx.event.ActionEvent
-import javafx.fxml.FXML
 import javafx.event.EventHandler
+import javafx.fxml.FXML
 import javafx.geometry.Insets
 import javafx.geometry.Pos
 import javafx.scene.control.Button
@@ -51,31 +52,25 @@ import javafx.scene.control.TreeCell
 import javafx.scene.control.TreeItem
 import javafx.scene.control.TreeView
 import javafx.scene.input.Clipboard
+import javafx.scene.input.KeyCode
+import javafx.scene.input.KeyEvent
 import javafx.scene.layout.AnchorPane
 import javafx.scene.layout.GridPane
 import javafx.scene.layout.HBox
 import javafx.scene.layout.Priority
+import javafx.scene.layout.StackPane
 import java.nio.file.Paths
 import javafx.scene.control.TextField as FxTextField
-import javafx.scene.control.SelectionMode
-import javafx.scene.input.KeyCode
-import javafx.scene.input.KeyEvent
 
 class MainController {
-
-    private companion object {
-        const val TEXT_NOT_SAVED = "Nicht gespeichert"
-        const val TEXT_NO_DATE = "--"
-        const val TEXT_NO_NOTE_SELECTED = "Keine Notiz ausgewählt"
-        const val TEXT_TRASH = "Papierkorb"
-        const val TEXT_REVISION_RESTORED = "Auf Revision zurückgesetzt"
-    }
 
     // ---------- Persistence / Service ----------
     private val db = SqliteDatabase(Paths.get(System.getProperty("user.home"), ".crossnote", "crossnote.db"))
     private val settingsRepo = SqliteSettingsRepository(db)
     private val notebookRepo = SqliteNotebookRepository(db)
     private val noteRepo = SqliteNoteRepository(db)
+
+    private lateinit var i18n: I18n
 
     private val service = NoteAppService(
         repo = noteRepo,
@@ -132,9 +127,21 @@ class MainController {
     @FXML lateinit var BTNtrashcan: Button
     @FXML lateinit var BTNsavestate: Button
     @FXML lateinit var BTNdarkmode: Button
+    @FXML lateinit var BTNlanguage: Button
     @FXML lateinit var BTNsave: Button
     @FXML lateinit var BTNsync: Button
     @FXML lateinit var BTNemptyTrash: Button
+
+    // ---------- I18n labels (from FXML) ----------
+    @FXML lateinit var LBnotesTitle: Label
+    @FXML lateinit var LBtrashTitle: Label
+    @FXML lateinit var LBsavestatesTitle: Label
+    @FXML lateinit var LBfilenameTitle: Label
+    @FXML lateinit var LBlastChangedStatic: Label
+
+    // ---------- Language icon nodes ----------
+    @FXML lateinit var LANG_DE: StackPane
+    @FXML lateinit var LANG_EN: StackPane
 
     // ---------- Editor ----------
     @FXML lateinit var titleField: TextField
@@ -156,6 +163,9 @@ class MainController {
     private lateinit var trashPresenter: TrashPresenter
     private lateinit var notebookActions: NotebookActions
 
+    // i18n-dependent menu
+    private var notebookRootMenu: ContextMenu? = null
+
     // =========================================================
     // Lifecycle
     // =========================================================
@@ -164,7 +174,7 @@ class MainController {
         service.purgeTrashedOlderThan(30)
 
         initUiState()
-        setupTheme()
+        setupThemeAndI18n()
         initEditor()
 
         setupTrashTree()
@@ -174,7 +184,7 @@ class MainController {
         setupNotebookActions()
         setupNotebookTreeUi()
 
-        setupEditorContextMenus()
+        rebuildEditorContextMenus()
         setupButtons()
 
         applyInitialUiState()
@@ -201,6 +211,7 @@ class MainController {
 
     private fun initEditor() {
         editor = NoteEditorPresenter(
+            i18n = i18n,
             service = service,
             titleField = titleField,
             contentArea = contentArea,
@@ -210,12 +221,15 @@ class MainController {
             trashCountdownText = { id -> trashPresenter.trashCountdownText(id) },
             onAfterSaveOrDelete = { notebookTreePresenter.refresh() }
         )
+
+        // ✅ wichtig: nach Konstruktion einmal i18n-Texte sauber setzen
+        editor.applyI18nTexts()
     }
 
     private fun applyInitialUiState() {
-        LBsaved.text = TEXT_NOT_SAVED
-        LBlastchange.text = TEXT_NO_DATE
-        LBdataname.text = TEXT_NO_NOTE_SELECTED
+        LBsaved.text = i18n.t("editor.saved.notSaved")
+        LBlastchange.text = i18n.t("editor.saved.noDate")
+        LBdataname.text = i18n.t("editor.saved.noNoteSelected")
 
         notebookTreePresenter.refresh()
         uiState.applyCenterMode()
@@ -224,6 +238,37 @@ class MainController {
     // =========================================================
     // Setup
     // =========================================================
+    private fun setupThemeAndI18n() {
+        i18n = I18n(settingsRepo)
+
+        themeManager = ThemeManager(settingsRepo, BTNdarkmode, i18n)
+        themeManager.bindToSceneRoot()
+        Dialogs.init(themeManager)
+
+        applyI18n()
+        updateLanguageIcon()
+    }
+
+    private fun applyI18n() {
+        // Button text optional – wenn du nur Flagge willst, kannst du hier auch "" setzen
+        BTNlanguage.text = ""
+        BTNlanguage.contentDisplay = javafx.scene.control.ContentDisplay.GRAPHIC_ONLY
+
+        LBnotesTitle.text = i18n.t("sidebar.notes")
+        LBtrashTitle.text = i18n.t("sidebar.trash")
+        LBsavestatesTitle.text = i18n.t("sidebar.savestates")
+        LBfilenameTitle.text = i18n.t("sidebar.filename")
+
+        TFnotebook.promptText = i18n.t("search.placeholder")
+        TFtrashcan.promptText = i18n.t("search.placeholder")
+        titleField.promptText = i18n.t("editor.title.placeholder")
+        contentArea.promptText = i18n.t("editor.content.placeholder")
+        LBlastChangedStatic.text = i18n.t("editor.lastChangedLabel")
+
+        rebuildNotebookRootMenu()
+        rebuildEditorContextMenus()
+    }
+
     private fun setupTrashTree() {
         trashPresenter = TrashPresenter(
             service = service,
@@ -235,8 +280,8 @@ class MainController {
             onOpenNoteInTrash = { id -> editor.openNote(id, true) },
             onTrashNonNoteSelected = {
                 editor.resetEditor()
-                LBsaved.text = TEXT_TRASH
-                LBlastchange.text = TEXT_NO_DATE
+                LBsaved.text = i18n.t("editor.saved.trash")
+                LBlastchange.text = i18n.t("editor.saved.noDate")
             },
             onRefreshNotebooks = { notebookTreePresenter.refresh() }
         )
@@ -305,8 +350,8 @@ class MainController {
         }
         TVtrashcan.selectionModel.selectionMode = javafx.scene.control.SelectionMode.MULTIPLE
 
-        TVtrashcan.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED) { e ->
-            if (e.code != javafx.scene.input.KeyCode.DELETE) return@addEventFilter
+        TVtrashcan.addEventFilter(KeyEvent.KEY_PRESSED) { e ->
+            if (e.code != KeyCode.DELETE) return@addEventFilter
 
             val selectedNodes = TVtrashcan.selectionModel.selectedItems
                 .mapNotNull { it.value }
@@ -317,15 +362,14 @@ class MainController {
             val folders = selectedNodes.filterIsInstance<TrashNode.FolderBranch>()
             val notes = selectedNodes.filterIsInstance<TrashNode.NoteLeaf>()
 
-            // Ordner: endgültig löschen inkl. Inhalt (Confirm ist bereits im Presenter drin)
             if (folders.isNotEmpty()) {
                 val ok = Dialogs.confirm(
-                    title = "Endgültig löschen",
+                    title = i18n.t("trash.deletePermanent.title"),
                     header = if (folders.size == 1)
                         "Ordner '${folders[0].name}' endgültig löschen?"
                     else
                         "${folders.size} Ordner endgültig löschen?",
-                    content = "Die Ordner inkl. Unterordner und Notizen werden dauerhaft entfernt."
+                    content = i18n.t("trash.deletePermanent.contentFolders")
                 )
                 if (!ok) {
                     e.consume()
@@ -339,15 +383,14 @@ class MainController {
                 return@addEventFilter
             }
 
-            // Nur Notizen: endgültig löschen (Confirm ist bereits im Presenter drin)
             if (notes.isNotEmpty()) {
                 val ok = Dialogs.confirm(
-                    title = "Endgültig löschen",
+                    title = i18n.t("trash.deletePermanent.title"),
                     header = if (notes.size == 1)
                         "Notiz '${notes[0].title}' endgültig löschen?"
                     else
                         "${notes.size} Notizen endgültig löschen?",
-                    content = "Die Notizen werden dauerhaft entfernt."
+                    content = i18n.t("trash.deletePermanent.contentNotes")
                 )
                 if (!ok) {
                     e.consume()
@@ -360,16 +403,15 @@ class MainController {
                 e.consume()
             }
         }
-        TVtrashcan.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED) { e ->
-            // ESC -> Auswahl löschen
-            if (e.code == javafx.scene.input.KeyCode.ESCAPE) {
+
+        TVtrashcan.addEventFilter(KeyEvent.KEY_PRESSED) { e ->
+            if (e.code == KeyCode.ESCAPE) {
                 TVtrashcan.selectionModel.clearSelection()
                 e.consume()
                 return@addEventFilter
             }
 
-            // STRG+A -> alles auswählen
-            if (e.code == javafx.scene.input.KeyCode.A && e.isControlDown) {
+            if (e.code == KeyCode.A && e.isControlDown) {
                 TVtrashcan.selectionModel.selectAll()
                 e.consume()
             }
@@ -393,7 +435,7 @@ class MainController {
                 notebookTreePresenter.refresh()
                 editor.openNote(noteId, false)
 
-                LBsaved.text = TEXT_REVISION_RESTORED
+                LBsaved.text = i18n.t("editor.saved.revisionRestored")
             }
         )
         savestatePresenter.init()
@@ -415,6 +457,7 @@ class MainController {
 
     private fun setupNotebookActions() {
         notebookActions = NotebookActions(
+            i18n = i18n,
             service = service,
             notebookRepo = notebookRepo,
             noteRepo = noteRepo,
@@ -427,18 +470,15 @@ class MainController {
     }
 
     private fun setupNotebookTreeUi() {
-        TVnotebook.selectionModel.selectionMode =
-            javafx.scene.control.SelectionMode.MULTIPLE
+        TVnotebook.selectionModel.selectionMode = javafx.scene.control.SelectionMode.MULTIPLE
 
         TVnotebook.addEventFilter(KeyEvent.KEY_PRESSED) { e ->
-            // ESC -> Auswahl löschen
             if (e.code == KeyCode.ESCAPE) {
                 TVnotebook.selectionModel.clearSelection()
                 e.consume()
                 return@addEventFilter
             }
 
-            // STRG+A -> alles auswählen (nur im Tree)
             if (e.code == KeyCode.A && e.isControlDown) {
                 TVnotebook.selectionModel.selectAll()
                 e.consume()
@@ -447,6 +487,7 @@ class MainController {
 
         TVnotebook.setCellFactory {
             NotebookTreeCell(
+                i18n = i18n,
                 service = service,
                 notebookRepo = notebookRepo,
                 themeManager = themeManager,
@@ -464,94 +505,21 @@ class MainController {
                 },
                 onCreateNotebook = { parent -> notebookActions.createNotebookDialog(parent) },
                 onTrashNotebookRecursively = { nbId -> notebookActions.trashNotebookRecursively(nbId) },
-
-                // ✅ NEU: Rename aus Kontextmenü
                 onRenameNotebook = { nbId, currentName ->
                     notebookActions.renameNotebookDialog(nbId, currentName)
                 }
             )
         }
 
-        // ✅ Delete-Taste: ausgewählte Elemente in den Papierkorb verschieben / löschen
-        TVnotebook.addEventFilter(KeyEvent.KEY_PRESSED) { e ->
-            if (e.code != KeyCode.DELETE) return@addEventFilter
+        rebuildNotebookRootMenu()
+    }
 
-            val selectedNodes = TVnotebook.selectionModel.selectedItems
-                .mapNotNull { it.value }
-                .filter { it !is NavNode.RootHeader }
-
-            if (selectedNodes.isEmpty()) return@addEventFilter
-
-            val selectedFolders = selectedNodes.filterIsInstance<NavNode.NotebookBranch>()
-            val selectedNotes = selectedNodes.filterIsInstance<NavNode.NoteLeaf>()
-
-            // Wenn mindestens ein Ordner dabei ist: bestätigen, dann rekursiv trashen
-            if (selectedFolders.isNotEmpty()) {
-                val folderCount = selectedFolders.size
-                val header = if (folderCount == 1)
-                    "Ordner '${selectedFolders[0].name}' wirklich löschen?"
-                else
-                    "$folderCount Ordner wirklich löschen?"
-
-                val ok = Dialogs.confirm(
-                    title = "Ordner löschen",
-                    header = header,
-                    content = "Die Ordner (inkl. Unterordner und Notizen) werden in den Papierkorb verschoben."
-                )
-                if (!ok) {
-                    e.consume()
-                    return@addEventFilter
-                }
-
-                selectedFolders.forEach { f ->
-                    notebookActions.trashNotebookRecursively(f.notebookId)
-                }
-
-                TVnotebook.selectionModel.clearSelection()
-                editor.resetEditor()
-                notebookTreePresenter.refresh()
-                trashPresenter.refresh()
-
-                e.consume()
-                return@addEventFilter
-            }
-
-            // Nur Notizen selektiert: bestätigen, dann löschen (Papierkorb)
-            if (selectedNotes.isNotEmpty()) {
-                val noteCount = selectedNotes.size
-                val header = if (noteCount == 1)
-                    "Notiz '${selectedNotes[0].title}' wirklich löschen?"
-                else
-                    "$noteCount Notizen wirklich löschen?"
-
-                val ok = Dialogs.confirm(
-                    title = "Notiz löschen",
-                    header = header,
-                    content = "Die Notizen werden in den Papierkorb verschoben."
-                )
-                if (!ok) {
-                    e.consume()
-                    return@addEventFilter
-                }
-
-                selectedNotes.forEach { n ->
-                    editor.deleteNote(n.noteId)
-                }
-
-                TVnotebook.selectionModel.clearSelection()
-                editor.resetEditor()
-                notebookTreePresenter.refresh()
-                trashPresenter.refresh()
-
-                e.consume()
-            }
-        }
-
+    private fun rebuildNotebookRootMenu() {
         val rootMenu = ContextMenu(
-            MenuItem("➕ Ordner erstellen").apply {
+            MenuItem(i18n.t("menu.createFolder")).apply {
                 setOnAction { notebookActions.createNotebookDialog(null) }
             },
-            MenuItem("＋ Notiz im Root erstellen").apply {
+            MenuItem(i18n.t("menu.createRootNote")).apply {
                 setOnAction {
                     editor.startNewNote(null)
                     uiState.applyCenterMode()
@@ -560,6 +528,7 @@ class MainController {
         )
 
         themeManager.register(rootMenu)
+        notebookRootMenu = rootMenu
         TVnotebook.contextMenu = rootMenu
     }
 
@@ -595,12 +564,6 @@ class MainController {
         }
     }
 
-    private fun setupTheme() {
-        themeManager = ThemeManager(settingsRepo, BTNdarkmode)
-        themeManager.bindToSceneRoot()
-        Dialogs.init(themeManager)
-    }
-
     // =========================================================
     // Actions
     // =========================================================
@@ -609,10 +572,15 @@ class MainController {
         themeManager.toggle()
     }
 
-    private fun openSavestatesFor(noteId: NoteId) {
-        uiState.showSavestates()
-        clearEditorAndSelections()
-        savestatePresenter.showFor(noteId)
+    @FXML
+    fun language_on(@Suppress("UNUSED_PARAMETER") e: ActionEvent) {
+        i18n.toggleLang()
+        applyI18n()
+
+        // ✅ wichtig: Editortexte (Counter + "Not saved" etc.) neu ziehen
+        if (::editor.isInitialized) editor.applyI18nTexts()
+
+        updateLanguageIcon()
     }
 
     private fun onSave() {
@@ -630,19 +598,19 @@ class MainController {
     }
 
     // =========================================================
-    // Editor ContextMenus (Title + Content)
+    // Context menus (Title + Content)
     // =========================================================
-    private fun setupEditorContextMenus() {
+    private fun rebuildEditorContextMenus() {
 
         fun attachMenu(control: TextInputControl) {
-            val undo = MenuItem("Rückgängig").apply { setOnAction { control.undo() } }
-            val redo = MenuItem("Wiederholen").apply { setOnAction { control.redo() } }
+            val undo = MenuItem(i18n.t("ctx.undo")).apply { setOnAction { control.undo() } }
+            val redo = MenuItem(i18n.t("ctx.redo")).apply { setOnAction { control.redo() } }
 
-            val cut = MenuItem("Ausschneiden").apply { setOnAction { control.cut() } }
-            val copy = MenuItem("Kopieren").apply { setOnAction { control.copy() } }
-            val paste = MenuItem("Einfügen").apply { setOnAction { control.paste() } }
-            val del = MenuItem("Löschen").apply { setOnAction { control.replaceSelection("") } }
-            val all = MenuItem("Alles markieren").apply { setOnAction { control.selectAll() } }
+            val cut = MenuItem(i18n.t("ctx.cut")).apply { setOnAction { control.cut() } }
+            val copy = MenuItem(i18n.t("ctx.copy")).apply { setOnAction { control.copy() } }
+            val paste = MenuItem(i18n.t("ctx.paste")).apply { setOnAction { control.paste() } }
+            val del = MenuItem(i18n.t("ctx.delete")).apply { setOnAction { control.replaceSelection("") } }
+            val all = MenuItem(i18n.t("ctx.selectAll")).apply { setOnAction { control.selectAll() } }
 
             val menu = ContextMenu(
                 undo, redo,
@@ -652,10 +620,8 @@ class MainController {
                 all
             )
 
-            // 1) ThemeManager registrieren (setzt onShowing)
             themeManager.register(menu)
 
-            // 2) Danach zusätzlich unseren Enable/Disable-Handler chainen
             val prev = menu.onShowing
             menu.onShowing = EventHandler { evt ->
                 prev?.handle(evt)
@@ -683,13 +649,22 @@ class MainController {
     }
 
     // =========================================================
+    // Savestates
+    // =========================================================
+    private fun openSavestatesFor(noteId: NoteId) {
+        uiState.showSavestates()
+        clearEditorAndSelections()
+        savestatePresenter.showFor(noteId)
+    }
+
+    // =========================================================
     // Sync Settings Dialog
     // =========================================================
     private fun openSyncSettingsDialog() {
         val cfg = syncService.loadConfig()
 
-        val enabled = CheckBox("Synchronisation aktiv").apply { isSelected = cfg.enabled }
-        val serverMode = CheckBox("Diesen Rechner als Server verwenden").apply { isSelected = cfg.serverMode }
+        val enabled = CheckBox(i18n.t("sync.enabled")).apply { isSelected = cfg.enabled }
+        val serverMode = CheckBox(i18n.t("sync.serverMode")).apply { isSelected = cfg.serverMode }
 
         val hostField = FxTextField(cfg.host)
         val portField = FxTextField(cfg.port.toString())
@@ -711,17 +686,17 @@ class MainController {
             add(enabled, 0, 0, 2, 1)
             add(serverMode, 0, 1, 2, 1)
 
-            add(Label("Server Host:"), 0, 2)
+            add(Label(i18n.t("sync.serverHost")), 0, 2)
             add(hostField, 1, 2)
 
-            add(Label("Port:"), 0, 3)
+            add(Label(i18n.t("sync.port")), 0, 3)
             add(portField, 1, 3)
         }
 
-        val btnFindServer = Button("Server finden")
-        val btnApply = Button("Apply")
-        val btnCancel = Button("Cancel")
-        val btnSyncNow = Button("Sync now")
+        val btnFindServer = Button(i18n.t("sync.findServer"))
+        val btnApply = Button(i18n.t("sync.apply"))
+        val btnCancel = Button(i18n.t("sync.cancel"))
+        val btnSyncNow = Button(i18n.t("sync.syncNow"))
 
         btnSyncNow.isDefaultButton = true
         btnCancel.isCancelButton = true
@@ -741,8 +716,8 @@ class MainController {
         val content = javafx.scene.layout.VBox(10.0, grid, footer).apply { padding = Insets(0.0) }
 
         val dialog = Dialog<ButtonType>().apply {
-            title = "Synchronisation"
-            headerText = "Server auswählen oder diesen Rechner als Server nutzen"
+            title = i18n.t("sync.title")
+            headerText = i18n.t("sync.header")
             dialogPane.content = content
             dialogPane.buttonTypes.clear()
             dialogPane.padding = Insets(0.0)
@@ -765,7 +740,7 @@ class MainController {
         fun validateAndSave(): Boolean {
             val port = portField.text.trim().toIntOrNull()
             if (port == null || port <= 0 || port > 65535) {
-                Dialogs.error("Synchronisation", "Ungültiger Port: '${portField.text}'")
+                Dialogs.error(i18n.t("sync.title"), i18n.t("sync.invalidPort", portField.text))
                 return false
             }
 
@@ -782,13 +757,13 @@ class MainController {
         btnFindServer.setOnAction {
             val port = portField.text.trim().toIntOrNull()
             if (port == null || port <= 0 || port > 65535) {
-                Dialogs.error("Server finden", "Ungültiger Port: '${portField.text}'")
+                Dialogs.error(i18n.t("sync.serverFind"), i18n.t("sync.findServer.invalidPort", portField.text))
                 return@setOnAction
             }
 
             btnFindServer.isDisable = true
             val oldText = btnFindServer.text
-            btnFindServer.text = "Suche..."
+            btnFindServer.text = i18n.t("sync.findServer.searching")
 
             Thread {
                 try {
@@ -798,7 +773,7 @@ class MainController {
                         Platform.runLater {
                             hostField.text = s.host
                             portField.text = s.httpPort.toString()
-                            Dialogs.info("Server gefunden", "Gefunden (UDP): ${s.name}\n${s.host}:${s.httpPort}")
+                            Dialogs.info(i18n.t("sync.serverFound"), "Found (UDP): ${s.name}\n${s.host}:${s.httpPort}")
                         }
                         return@Thread
                     }
@@ -812,22 +787,18 @@ class MainController {
 
                     Platform.runLater {
                         if (scanned.isEmpty()) {
-                            Dialogs.info(
-                                "Server finden",
-                                "Kein Server gefunden.\n\n" +
-                                        "Hinweis: In vielen Hotspots ist UDP-Broadcast blockiert.\n" +
-                                        "Wenn /ping per IP klappt, sollte der Scan normalerweise etwas finden.\n" +
-                                        "Prüfe ggf. Windows-Firewall (UDP/Port) und ob Geräte wirklich im gleichen Subnetz sind."
-                            )
+                            Dialogs.info(i18n.t("sync.serverFind"), i18n.t("sync.serverFind.none"))
                         } else {
                             val s = scanned.first()
                             hostField.text = s.host
                             portField.text = s.httpPort.toString()
-                            Dialogs.info("Server gefunden", "Gefunden (Scan): ${s.name}\n${s.host}:${s.httpPort}")
+                            Dialogs.info(i18n.t("sync.serverFound"), "Found (Scan): ${s.name}\n${s.host}:${s.httpPort}")
                         }
                     }
                 } catch (t: Throwable) {
-                    Platform.runLater { Dialogs.error("Server finden", "Fehler bei der Suche: ${t.message}") }
+                    Platform.runLater {
+                        Dialogs.error(i18n.t("sync.serverFind"), i18n.t("sync.findError", t.message ?: ""))
+                    }
                 } finally {
                     Platform.runLater {
                         btnFindServer.isDisable = false
@@ -868,7 +839,7 @@ class MainController {
     private fun doSyncNow() {
         val cfg = syncService.loadConfig()
         if (!cfg.enabled) {
-            Dialogs.info("Synchronisation", "Synchronisation ist deaktiviert (siehe Einstellungen).")
+            Dialogs.info(i18n.t("sync.title"), i18n.t("sync.disabled"))
             return
         }
 
@@ -878,11 +849,11 @@ class MainController {
                     localSyncServer.start(cfg.port)
                     if (!discoveryServer.isRunning()) discoveryServer.start()
                 } catch (t: Throwable) {
-                    Dialogs.error("Synchronisation", "Server konnte nicht gestartet werden: ${t.message}")
+                    Dialogs.error(i18n.t("sync.title"), i18n.t("sync.serverStartFail", t.message ?: ""))
                     return
                 }
             }
-            Dialogs.info("Synchronisation", "Server-Modus aktiv.\nServer läuft auf Port ${cfg.port}.")
+            Dialogs.info(i18n.t("sync.title"), i18n.t("sync.serverModeActive", cfg.port))
             return
         }
 
@@ -937,14 +908,14 @@ class MainController {
             trashPresenter.refresh()
 
             Dialogs.info(
-                "Synchronisation",
-                "Notebooks Pull: erhalten=${remoteNbs.size}, übernommen=$nbApplied\n" +
-                        "Notebooks Push: gesendet=${localNbs.size}, Server: $nbPushResult\n\n" +
-                        "Notes Pull: erhalten=${pulledNotes.size}, übernommen=$pulledApplied\n" +
-                        "Notes Push: gesendet=${localChanged.size}, Server: $pushResult"
+                i18n.t("sync.title"),
+                "Notebooks Pull: received=${remoteNbs.size}, applied=$nbApplied\n" +
+                        "Notebooks Push: sent=${localNbs.size}, Server: $nbPushResult\n\n" +
+                        "Notes Pull: received=${pulledNotes.size}, applied=$pulledApplied\n" +
+                        "Notes Push: sent=${localChanged.size}, Server: $pushResult"
             )
         } catch (t: Throwable) {
-            Dialogs.error("Synchronisation", "Sync fehlgeschlagen: ${t.message}")
+            Dialogs.error(i18n.t("sync.title"), i18n.t("sync.failed", t.message ?: ""))
         }
     }
 
@@ -955,9 +926,19 @@ class MainController {
                 localSyncServer.start(cfg.port)
                 if (!discoveryServer.isRunning()) discoveryServer.start()
             } catch (t: Throwable) {
-                Dialogs.error("Synchronisation", "Server konnte nicht gestartet werden: ${t.message}")
+                Dialogs.error(i18n.t("sync.title"), i18n.t("sync.serverStartFail", t.message ?: ""))
             }
         }
+    }
+
+    private fun updateLanguageIcon() {
+        val isDe = i18n.currentLang().equals("de", ignoreCase = true)
+
+        LANG_DE.isVisible = isDe
+        LANG_DE.isManaged = isDe
+
+        LANG_EN.isVisible = !isDe
+        LANG_EN.isManaged = !isDe
     }
 
     fun close() {

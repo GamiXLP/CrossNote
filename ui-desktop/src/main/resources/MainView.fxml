@@ -8,6 +8,8 @@
 <?import javafx.scene.control.TextArea?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.control.TreeView?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
 <?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
@@ -16,8 +18,8 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.shape.SVGPath?>
 <?import java.lang.String?>
-<?import javafx.scene.image.Image?>
-<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.Group?>
+<?import javafx.scene.shape.Circle?>
 
 <BorderPane
         styleClass="root"
@@ -76,6 +78,53 @@
                     </StackPane>
                 </graphic>
             </Button>
+
+            <!-- Language Toggle -->
+            <Button fx:id="BTNlanguage"
+                    onAction="#language_on"
+                    mnemonicParsing="false">
+                <styleClass>
+                    <String fx:value="icon-button"/>
+                    <String fx:value="language-toggle"/>
+                </styleClass>
+
+                <graphic>
+                    <StackPane>
+
+                        <!-- DE Flag (visible by controller) -->
+                        <StackPane fx:id="LANG_DE" prefWidth="18" prefHeight="18" minWidth="18" minHeight="18">
+                            <clip>
+                                <javafx.scene.shape.Circle centerX="9" centerY="9" radius="9"/>
+                            </clip>
+                            <javafx.scene.Group scaleX="0.03515625" scaleY="0.03515625">
+                                <children>
+                                    <SVGPath content="m0 345l256.7-25.5L512 345v167H0z" style="-fx-fill: #ffda44;"/>
+                                    <SVGPath content="m0 167l255-23l257 23v178H0z" style="-fx-fill: #d80027;"/>
+                                    <SVGPath content="M0 0h512v167H0z" style="-fx-fill: #333333;"/>
+                                </children>
+                            </javafx.scene.Group>
+                        </StackPane>
+
+                        <!-- EN Flag (visible by controller) -->
+                        <StackPane fx:id="LANG_EN" prefWidth="18" prefHeight="18" minWidth="18" minHeight="18">
+                            <clip>
+                                <javafx.scene.shape.Circle centerX="9" centerY="9" radius="9"/>
+                            </clip>
+                            <javafx.scene.Group scaleX="0.03515625" scaleY="0.03515625">
+                                <children>
+                                    <SVGPath content="m0 0l8 22l-8 23v23l32 54l-32 54v32l32 48l-32 48v32l32 54l-32 54v68l22-8l23 8h23l54-32l54 32h32l48-32l48 32h32l54-32l54 32h68l-8-22l8-23v-23l-32-54l32-54v-32l-32-48l32-48v-32l-32-54l32-54V0l-22 8l-23-8h-23l-54 32l-54-32h-32l-48 32l-48-32h-32l-54 32L68 0z"
+                                             style="-fx-fill: #eeeeee;"/>
+                                    <SVGPath content="M336 0v108L444 0Zm176 68L404 176h108zM0 176h108L0 68ZM68 0l108 108V0Zm108 512V404L68 512ZM0 444l108-108H0Zm512-108H404l108 108Zm-68 176L336 404v108z"
+                                             style="-fx-fill: #0052b4;"/>
+                                    <SVGPath content="M0 0v45l131 131h45zm208 0v208H0v96h208v208h96V304h208v-96H304V0zm259 0L336 131v45L512 0zM176 336L0 512h45l131-131zm160 0l176 176v-45L381 336z"
+                                             style="-fx-fill: #d80027;"/>
+                                </children>
+                            </javafx.scene.Group>
+                        </StackPane>
+
+                    </StackPane>
+                </graphic>
+            </Button>
         </HBox>
     </top>
 
@@ -100,7 +149,7 @@
                             <HBox spacing="10" alignment="CENTER_LEFT">
                                 <SVGPath styleClass="icon"
                                          content="M3 7h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M3 7a2 2 0 0 1 2-2h4l2 2"/>
-                                <Label text="Notizen" styleClass="section-title"/>
+                                <Label fx:id="LBnotesTitle" text="Notizen" styleClass="section-title"/>
                                 <Region HBox.hgrow="ALWAYS"/>
                             </HBox>
 
@@ -134,7 +183,7 @@
                                    M10 9v7
                                    M14 9v7
                                  "/>
-                                <Label text="Papierkorb" styleClass="section-title"/>
+                                <Label fx:id="LBtrashTitle" text="Papierkorb" styleClass="section-title"/>
                                 <Region HBox.hgrow="ALWAYS"/>
                             </HBox>
 
@@ -143,8 +192,8 @@
                                        styleClass="search-field"/>
 
                             <TreeView fx:id="TVtrashcan"
-                                styleClass="sidebar-list trash-tree"
-                                VBox.vgrow="ALWAYS"/>
+                                      styleClass="sidebar-list trash-tree"
+                                      VBox.vgrow="ALWAYS"/>
                         </VBox>
                     </children>
                 </AnchorPane>
@@ -161,12 +210,20 @@
                             <HBox spacing="10" alignment="CENTER_LEFT">
                                 <SVGPath styleClass="icon"
                                          content="M12 8v5l3 2 M3 12a9 9 0 1 0 3-6 M3 3v6h6"/>
-                                <Label text="Speicherstände" styleClass="section-title"/>
-                                <Label fx:id="LBdataname"
+                                <Label fx:id="LBsavestatesTitle" text="Speicherstände" styleClass="section-title"/>
+
+                                <Label fx:id="LBfilenameTitle"
                                        text="Dateiname"
                                        styleClass="section-title"
                                        HBox.hgrow="ALWAYS"/>
+
+                                <Label fx:id="LBdataname"
+                                       text="Keine Notiz ausgewählt"
+                                       styleClass="section-title"
+                                       HBox.hgrow="ALWAYS"/>
+
                                 <Region HBox.hgrow="ALWAYS"/>
+
                                 <Button fx:id="BTNload"
                                         styleClass="icon-pill"
                                         mnemonicParsing="false">
@@ -226,7 +283,7 @@
                         mnemonicParsing="false">
                     <graphic>
                         <SVGPath styleClass="icon"
-                            content="M19.5 5.5l-0.402 6.506 M4.5 5.5l0.605 10.025c0.154 2.567 0.232 3.85 0.874 4.774 c0.317 0.456 0.726 0.842 1.2 1.131 c0.671 0.41 1.502 0.533 2.821 0.57 M20 15l-7 7 M20 22l-7-7 M3 5.5h18 M16.056 5.5l-0.683-1.408c-0.453-0.936-0.68-1.403-1.071-1.695 a2 2 0 0 0-0.275-0.172 C13.594 2 13.074 2 12.035 2 c-1.066 0-1.599 0-2.04 0.234 a2 2 0 0 0-0.278 0.18 c-0.395 0.303-0.616 0.788-1.058 1.757 L8.053 5.5"/>
+                                 content="M19.5 5.5l-0.402 6.506 M4.5 5.5l0.605 10.025c0.154 2.567 0.232 3.85 0.874 4.774 c0.317 0.456 0.726 0.842 1.2 1.131 c0.671 0.41 1.502 0.533 2.821 0.57 M20 15l-7 7 M20 22l-7-7 M3 5.5h18 M16.056 5.5l-0.683-1.408c-0.453-0.936-0.68-1.403-1.071-1.695 a2 2 0 0 0-0.275-0.172 C13.594 2 13.074 2 12.035 2 c-1.066 0-1.599 0-2.04 0.234 a2 2 0 0 0-0.278 0.18 c-0.395 0.303-0.616 0.788-1.058 1.757 L8.053 5.5"/>
                     </graphic>
                 </Button>
 
@@ -243,7 +300,7 @@
                            promptText="Titel der Notiz"
                            styleClass="note-title"
                            HBox.hgrow="ALWAYS"/>
-                           
+
                 <Label fx:id="LBtitleCount" text="Noch 120 Zeichen" opacity="0.7" styleClass="text-views"/>
 
                 <Button fx:id="BTNsave"
@@ -254,15 +311,15 @@
                                  content="M5 4h14l1 1v16H4V5z M8 4v6h8V4 M8 21v-7h8v7"/>
                     </graphic>
                 </Button>
+
                 <Button fx:id="BTNsync"
                         styleClass="icon-pill"
                         mnemonicParsing="false">
                     <graphic>
-                        <!-- Cloud/Sync Icon -->
                         <SVGPath styleClass="icon"
-                                content="M19 18H7a4 4 0 0 1 0-8 5 5 0 0 1 9.8-1.2A3.5 3.5 0 0 1 19 18z
-                                        M9 14l2 2l2-2
-                                        M11 16v-5"/>
+                                 content="M19 18H7a4 4 0 0 1 0-8 5 5 0 0 1 9.8-1.2A3.5 3.5 0 0 1 19 18z
+                                          M9 14l2 2l2-2
+                                          M11 16v-5"/>
                     </graphic>
                 </Button>
             </HBox>
@@ -273,7 +330,7 @@
                       VBox.vgrow="ALWAYS"/>
 
             <HBox spacing="10" alignment="CENTER_LEFT">
-                <Label text="Zuletzt geändert:" styleClass="text-views"/>
+                <Label fx:id="LBlastChangedStatic" text="Zuletzt geändert:" styleClass="text-views"/>
                 <Label fx:id="LBlastchange" text="--" styleClass="text-views"/>
                 <Region HBox.hgrow="ALWAYS"/>
                 <Label fx:id="LBsaved"

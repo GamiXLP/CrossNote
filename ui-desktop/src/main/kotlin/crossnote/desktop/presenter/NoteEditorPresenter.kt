@@ -1,6 +1,7 @@
 package crossnote.desktop.presenter
 
 import crossnote.app.note.NoteAppService
+import crossnote.desktop.I18n
 import crossnote.desktop.util.DialogsExt
 import crossnote.domain.note.NoteId
 import crossnote.domain.note.NotebookId
@@ -13,12 +14,13 @@ import javafx.scene.control.TextFormatter
 import javafx.scene.text.Text
 
 class NoteEditorPresenter(
+    private val i18n: I18n,
     private val service: NoteAppService,
     private val titleField: TextField,
     private val contentArea: TextArea,
     private val lastChangeLabel: Label,
     private val savedLabel: Label,
-    private val titleCountLabel: Label, // ✅ NEU: "noch xx Zeichen"
+    private val titleCountLabel: Label,
     private val trashCountdownText: (noteId: String) -> String,
     private val onAfterSaveOrDelete: () -> Unit,
 ) {
@@ -33,43 +35,65 @@ class NoteEditorPresenter(
             if (newText.length <= TextConstraints.NOTE_TITLE_MAX) change else null
         }
 
-        titleField.promptText = "Titel (max. ${TextConstraints.NOTE_TITLE_MAX} Zeichen)"
-
-        // ✅ Breite fixieren basierend auf längstem möglichen Text (ohne Scene nötig)
-        val maxText = "Noch ${TextConstraints.NOTE_TITLE_MAX} Zeichen"
-        val measuredWidth = Text(maxText).apply { font = titleCountLabel.font }.layoutBounds.width + 6.0
+        // ✅ feste Breite: damit DE/EN nicht "springen"
+        val maxTextDe = "Noch ${TextConstraints.NOTE_TITLE_MAX} Zeichen"
+        val maxTextEn = "${TextConstraints.NOTE_TITLE_MAX} characters left"
+        val measuredWidth = maxOf(
+            Text(maxTextDe).apply { font = titleCountLabel.font }.layoutBounds.width,
+            Text(maxTextEn).apply { font = titleCountLabel.font }.layoutBounds.width
+        ) + 8.0
 
         titleCountLabel.minWidth = measuredWidth
         titleCountLabel.prefWidth = measuredWidth
         titleCountLabel.maxWidth = measuredWidth
 
-
-        // --- Counter Logik ---
-        fun updateCounter(text: String?) {
-            val len = (text ?: "").length
-            val remaining = TextConstraints.NOTE_TITLE_MAX - len
-            titleCountLabel.text =
-                if (remaining <= 0) "Limit erreicht"
-                else "Noch $remaining Zeichen"
-        }
-
-        // initial
-        updateCounter(titleField.text)
-
         // live update
         titleField.textProperty().addListener { _, _, newValue ->
             updateCounter(newValue)
         }
-}
+
+        // ✅ beim Start einmal alles korrekt setzen
+        applyI18nTexts()
+        updateCounter(titleField.text)
+    }
+
+    /**
+     * ✅ Wird vom MainController nach Language-Toggle aufgerufen
+     * Setzt alle sichtbaren i18n-Texte im Editor sofort neu.
+     */
+    fun applyI18nTexts() {
+        // Prompt
+        titleField.promptText = i18n.t("editor.title.max", TextConstraints.NOTE_TITLE_MAX)
+
+        // Counter neu setzen (z.B. "Noch 120 Zeichen" vs. "120 characters left")
+        updateCounter(titleField.text)
+
+        // Saved/LastChanged Labels konsistent setzen,
+        // ABER: wenn gerade Papierkorb-Notiz offen ist, nicht überschreiben (Countdown)
+        if (selectedNoteId == null) {
+            savedLabel.text = i18n.t("editor.saved.notSaved")
+            lastChangeLabel.text = i18n.t("editor.saved.noDate")
+        }
+    }
+
+    private fun updateCounter(text: String?) {
+        val len = (text ?: "").length
+        val remaining = TextConstraints.NOTE_TITLE_MAX - len
+
+        titleCountLabel.text =
+            if (remaining <= 0) i18n.t("common.limitReached")
+            else i18n.t("common.remainingChars", remaining)
+    }
 
     fun resetEditor() {
         selectedNoteId = null
         titleField.text = ""
         contentArea.text = ""
-        lastChangeLabel.text = "--"
-        savedLabel.text = "Nicht gespeichert"
+        lastChangeLabel.text = i18n.t("editor.saved.noDate")
+        savedLabel.text = i18n.t("editor.saved.notSaved")
         titleField.requestFocus()
-        // Counter updatet automatisch über Listener
+        // Counter updated automatisch über Listener, aber wir setzen ihn sauber:
+        updateCounter(titleField.text)
     }
 
     fun startNewNote(targetNotebookId: NotebookId?) {
@@ -86,8 +110,10 @@ class NoteEditorPresenter(
         titleField.text = note.title
         contentArea.text = note.content
         lastChangeLabel.text = note.updatedAt.toString()
-        savedLabel.text = if (inTrash) trashCountdownText(noteId) else "Nicht gespeichert"
-        // Counter updatet automatisch über Listener
+
+        savedLabel.text = if (inTrash) trashCountdownText(noteId) else i18n.t("editor.saved.notSaved")
+
+        updateCounter(titleField.text)
     }
 
     fun saveIfEditable(isEditableContext: Boolean) {
@@ -101,17 +127,17 @@ class NoteEditorPresenter(
             try {
                 val newId = service.createNote(title, content, notebookId = selectedNotebookId)
                 selectedNoteId = newId.value
-                savedLabel.text = "Gespeichert (neu)"
+                savedLabel.text = i18n.t("editor.saved.savedNew")
             } catch (e: ValidationException) {
-                DialogsExt.warn(e.message ?: "Ungültige Eingabe")
+                DialogsExt.warn(e.message ?: i18n.t("common.invalidInput"))
                 return
             }
         } else {
             try {
                 service.updateNote(NoteId(id), title, content)
-                savedLabel.text = "Gespeichert (Revision erstellt)"
+                savedLabel.text = i18n.t("editor.saved.savedRevision")
             } catch (e: ValidationException) {
-                DialogsExt.warn(e.message ?: "Ungültige Eingabe")
+                DialogsExt.warn(e.message ?: i18n.t("common.invalidInput"))
                 return
             }
         }
