@@ -457,6 +457,7 @@ class MainController {
 
     private fun setupNotebookActions() {
         notebookActions = NotebookActions(
+            i18n = i18n,
             service = service,
             notebookRepo = notebookRepo,
             noteRepo = noteRepo,
