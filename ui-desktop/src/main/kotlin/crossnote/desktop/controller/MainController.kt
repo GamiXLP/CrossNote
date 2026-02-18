@@ -211,6 +211,7 @@ class MainController {
 
     private fun initEditor() {
         editor = NoteEditorPresenter(
+            i18n = i18n,
             service = service,
             titleField = titleField,
             contentArea = contentArea,
@@ -220,6 +221,9 @@ class MainController {
             trashCountdownText = { id -> trashPresenter.trashCountdownText(id) },
             onAfterSaveOrDelete = { notebookTreePresenter.refresh() }
         )
+
+        // ✅ wichtig: nach Konstruktion einmal i18n-Texte sauber setzen
+        editor.applyI18nTexts()
     }
 
     private fun applyInitialUiState() {
@@ -482,6 +486,7 @@ class MainController {
 
         TVnotebook.setCellFactory {
             NotebookTreeCell(
+                i18n = i18n,
                 service = service,
                 notebookRepo = notebookRepo,
                 themeManager = themeManager,
@@ -570,6 +575,10 @@ class MainController {
     fun language_on(@Suppress("UNUSED_PARAMETER") e: ActionEvent) {
         i18n.toggleLang()
         applyI18n()
+
+        // ✅ wichtig: Editortexte (Counter + "Not saved" etc.) neu ziehen
+        if (::editor.isInitialized) editor.applyI18nTexts()
+
         updateLanguageIcon()
     }
 

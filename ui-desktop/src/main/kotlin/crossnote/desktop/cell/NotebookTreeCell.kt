@@ -1,6 +1,7 @@
 package crossnote.desktop.cell
 
 import crossnote.app.note.NoteAppService
+import crossnote.desktop.I18n
 import crossnote.desktop.NavNode
 import crossnote.desktop.ThemeManager
 import crossnote.desktop.util.Dialogs
@@ -20,6 +21,7 @@ import javafx.scene.input.Dragboard
 import javafx.scene.input.TransferMode
 
 class NotebookTreeCell(
+    private val i18n: I18n, // ✅ NEW
     private val service: NoteAppService,
     private val notebookRepo: SqliteNotebookRepository,
     private val themeManager: ThemeManager,
@@ -30,8 +32,6 @@ class NotebookTreeCell(
     private val onStartNewNote: (targetNotebookId: NotebookId?) -> Unit,
     private val onCreateNotebook: (parent: NotebookId?) -> Unit,
     private val onTrashNotebookRecursively: (notebookId: NotebookId) -> Unit,
-
-    // ✅ NEU: Rename-Callback
     private val onRenameNotebook: (notebookId: NotebookId, currentName: String) -> Unit,
 ) : TreeCell<NavNode>() {
 
@@ -39,10 +39,7 @@ class NotebookTreeCell(
     private var listenedTreeItem: javafx.scene.control.TreeItem<NavNode>? = null
 
     override fun updateItem(item: NavNode?, empty: Boolean) {
-
-        expandedListener?.let { l ->
-            listenedTreeItem?.expandedProperty()?.removeListener(l)
-        }
+        expandedListener?.let { l -> listenedTreeItem?.expandedProperty()?.removeListener(l) }
         expandedListener = null
         listenedTreeItem = null
 
@@ -56,7 +53,6 @@ class NotebookTreeCell(
         }
 
         when (item) {
-
             is NavNode.NotebookBranch -> {
                 text = item.name
                 val ti = treeItem ?: return
@@ -67,12 +63,10 @@ class NotebookTreeCell(
 
                 fun updateIcon() {
                     val icon = buildIcon(ti.isExpanded)
-
                     icon.setOnMouseClicked { e ->
                         ti.isExpanded = !ti.isExpanded
                         e.consume()
                     }
-
                     graphic = icon
                 }
 
@@ -89,7 +83,8 @@ class NotebookTreeCell(
             }
 
             is NavNode.RootHeader -> {
-                text = "Root"
+                // optional: i18n, aber "Root" ist ok
+                text = i18n.t("tree.root")
                 graphic = null
             }
         }
@@ -97,6 +92,7 @@ class NotebookTreeCell(
 
     init {
 
+        // ---------------- Drag ----------------
         setOnDragDetected { e ->
             if (isEmpty || item == null) return@setOnDragDetected
 
@@ -179,6 +175,7 @@ class NotebookTreeCell(
             e.consume()
         }
 
+        // ---------------- Context menu ----------------
         setOnContextMenuRequested { e ->
             if (isEmpty || item == null) return@setOnContextMenuRequested
 
@@ -195,34 +192,26 @@ class NotebookTreeCell(
                 val folders = selectedValues.filterIsInstance<NavNode.NotebookBranch>()
                 val notes = selectedValues.filterIsInstance<NavNode.NoteLeaf>()
 
-                val deleteLabel = buildString {
-                    append("🗑 Auswahl löschen (")
-                    append(selectedValues.size)
-                    append(")")
-                }
+                val deleteLabel = i18n.t("bulk.deleteSelection", selectedValues.size)
 
                 val bulkMenu = ContextMenu(
                     MenuItem(deleteLabel).apply {
                         setOnAction {
-                            // Ordner zuerst (rekursiv)
                             if (folders.isNotEmpty()) {
                                 val ok = Dialogs.confirm(
-                                    title = "Löschen",
-                                    header = "${folders.size} Ordner löschen?",
-                                    content = "Die Ordner inkl. Unterordner und Notizen werden in den Papierkorb verschoben."
+                                    title = i18n.t("bulk.delete.title"),
+                                    header = i18n.t("bulk.delete.folders.header", folders.size),
+                                    content = i18n.t("bulk.delete.folders.content")
                                 )
                                 if (!ok) return@setOnAction
-
                                 folders.forEach { f -> onTrashNotebookRecursively(f.notebookId) }
                             } else {
-                                // Nur Notizen
                                 val ok = Dialogs.confirm(
-                                    title = "Notiz löschen",
-                                    header = "${notes.size} Notizen löschen?",
-                                    content = "Die Notizen werden in den Papierkorb verschoben."
+                                    title = i18n.t("bulk.delete.title"),
+                                    header = i18n.t("bulk.delete.notes.header", notes.size),
+                                    content = i18n.t("bulk.delete.notes.content")
                                 )
                                 if (!ok) return@setOnAction
-
                                 notes.forEach { n -> onDeleteNote(n.noteId) }
                             }
 
@@ -240,53 +229,49 @@ class NotebookTreeCell(
             val menu = when (node) {
 
                 is NavNode.NoteLeaf -> ContextMenu(
-                    MenuItem("🗑 Notiz löschen").apply {
+                    MenuItem(i18n.t("note.delete")).apply {
                         setOnAction { onDeleteNote(node.noteId) }
                     },
-                    MenuItem("📋 Speicherstände anzeigen").apply {
+                    MenuItem(i18n.t("note.savestates")).apply {
                         setOnAction { onOpenSavestates(node.noteId) }
                     }
                 )
 
                 is NavNode.NotebookBranch -> ContextMenu(
-                    MenuItem("✏ Ordner umbenennen").apply {
+                    MenuItem(i18n.t("folder.rename")).apply {
                         setOnAction { onRenameNotebook(node.notebookId, node.name) }
                     },
                     SeparatorMenuItem(),
-                    MenuItem("＋ Neue Notiz hier").apply {
+                    MenuItem(i18n.t("note.newHere")).apply {
                         setOnAction { onStartNewNote(node.notebookId) }
                     },
-                    MenuItem("➕ Neuer Unterordner").apply {
+                    MenuItem(i18n.t("folder.newSubfolder")).apply {
                         setOnAction { onCreateNotebook(node.notebookId) }
                     },
                     SeparatorMenuItem(),
-                    MenuItem("🗑 Ordner löschen (Papierkorb)").apply {
+                    MenuItem(i18n.t("folder.trash")).apply {
                         setOnAction {
-                            if (Dialogs.confirm(
-                                    title = "Ordner löschen",
-                                    header = "Ordner wirklich in den Papierkorb verschieben?",
-                                    content = "Der Ordner inkl. Unterordner und Notizen wird in den Papierkorb verschoben."
-                                )
-                            ) {
-                                onTrashNotebookRecursively(node.notebookId)
-                            }
+                            val ok = Dialogs.confirm(
+                                title = i18n.t("delete.folder.title"),
+                                header = i18n.t("delete.folder.header"),
+                                content = i18n.t("delete.folder.content")
+                            )
+                            if (ok) onTrashNotebookRecursively(node.notebookId)
                         }
                     }
                 )
 
                 is NavNode.RootHeader -> ContextMenu(
-                    MenuItem("＋ Neue Notiz im Root").apply {
+                    MenuItem(i18n.t("note.newRoot")).apply {
                         setOnAction { onStartNewNote(null) }
                     },
-                    MenuItem("➕ Neuer Ordner").apply {
+                    MenuItem(i18n.t("folder.newRoot")).apply {
                         setOnAction { onCreateNotebook(null) }
                     }
                 )
             }
 
-            // ✅ extrem wichtig: damit Toggle sofort wirkt und ohne Refresh stimmt
             themeManager.register(menu)
-
             contextMenu = menu
             e.consume()
         }
