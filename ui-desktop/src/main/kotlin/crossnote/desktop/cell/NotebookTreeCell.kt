@@ -11,6 +11,9 @@ import crossnote.domain.note.NotebookId
 import crossnote.infra.persistence.SqliteNotebookRepository
 import crossnote.desktop.util.NotebookTreeUtils.createNoteIcon
 import javafx.beans.value.ChangeListener
+import javafx.geometry.Pos
+import javafx.scene.Group
+import javafx.scene.Node
 import javafx.scene.control.ContextMenu
 import javafx.scene.control.MenuItem
 import javafx.scene.control.SeparatorMenuItem
@@ -19,9 +22,11 @@ import javafx.scene.input.ClipboardContent
 import javafx.scene.input.DragEvent
 import javafx.scene.input.Dragboard
 import javafx.scene.input.TransferMode
+import javafx.scene.layout.StackPane
+import javafx.scene.shape.SVGPath
 
 class NotebookTreeCell(
-    private val i18n: I18n, // ✅ NEW
+    private val i18n: I18n,
     private val service: NoteAppService,
     private val notebookRepo: SqliteNotebookRepository,
     private val themeManager: ThemeManager,
@@ -83,7 +88,6 @@ class NotebookTreeCell(
             }
 
             is NavNode.RootHeader -> {
-                // optional: i18n, aber "Root" ist ok
                 text = i18n.t("tree.root")
                 graphic = null
             }
@@ -91,7 +95,6 @@ class NotebookTreeCell(
     }
 
     init {
-
         // ---------------- Drag ----------------
         setOnDragDetected { e ->
             if (isEmpty || item == null) return@setOnDragDetected
@@ -120,13 +123,10 @@ class NotebookTreeCell(
         setOnDragOver { e: DragEvent ->
             if (isEmpty || item == null) return@setOnDragOver
 
-            val payload = e.dragboard.string ?: return@setOnDragOver
             val target = item
-
             if (target is NavNode.NotebookBranch || target is NavNode.RootHeader) {
                 e.acceptTransferModes(TransferMode.MOVE)
             }
-
             e.consume()
         }
 
@@ -192,10 +192,9 @@ class NotebookTreeCell(
                 val folders = selectedValues.filterIsInstance<NavNode.NotebookBranch>()
                 val notes = selectedValues.filterIsInstance<NavNode.NoteLeaf>()
 
-                val deleteLabel = i18n.t("bulk.deleteSelection", selectedValues.size)
-
                 val bulkMenu = ContextMenu(
-                    MenuItem(deleteLabel).apply {
+                    MenuItem(i18n.t("bulk.deleteSelection", selectedValues.size)).apply {
+                        graphic = iconTrash()
                         setOnAction {
                             if (folders.isNotEmpty()) {
                                 val ok = Dialogs.confirm(
@@ -214,7 +213,6 @@ class NotebookTreeCell(
                                 if (!ok) return@setOnAction
                                 notes.forEach { n -> onDeleteNote(n.noteId) }
                             }
-
                             tv.selectionModel.clearSelection()
                         }
                     }
@@ -227,29 +225,34 @@ class NotebookTreeCell(
             }
 
             val menu = when (node) {
-
                 is NavNode.NoteLeaf -> ContextMenu(
                     MenuItem(i18n.t("note.delete")).apply {
+                        graphic = iconTrash()
                         setOnAction { onDeleteNote(node.noteId) }
                     },
                     MenuItem(i18n.t("note.savestates")).apply {
+                        graphic = iconClock()
                         setOnAction { onOpenSavestates(node.noteId) }
                     }
                 )
 
                 is NavNode.NotebookBranch -> ContextMenu(
                     MenuItem(i18n.t("folder.rename")).apply {
+                        graphic = iconPencil()
                         setOnAction { onRenameNotebook(node.notebookId, node.name) }
                     },
                     SeparatorMenuItem(),
                     MenuItem(i18n.t("note.newHere")).apply {
+                        graphic = iconPlus()
                         setOnAction { onStartNewNote(node.notebookId) }
                     },
                     MenuItem(i18n.t("folder.newSubfolder")).apply {
+                        graphic = iconFolderPlus()
                         setOnAction { onCreateNotebook(node.notebookId) }
                     },
                     SeparatorMenuItem(),
                     MenuItem(i18n.t("folder.trash")).apply {
+                        graphic = iconTrash()
                         setOnAction {
                             val ok = Dialogs.confirm(
                                 title = i18n.t("delete.folder.title"),
@@ -263,12 +266,16 @@ class NotebookTreeCell(
 
                 is NavNode.RootHeader -> ContextMenu(
                     MenuItem(i18n.t("note.newRoot")).apply {
+                        graphic = iconPlus()
                         setOnAction { onStartNewNote(null) }
                     },
                     MenuItem(i18n.t("folder.newRoot")).apply {
+                        graphic = iconFolderPlus()
                         setOnAction { onCreateNotebook(null) }
                     }
                 )
+
+                else -> ContextMenu()
             }
 
             themeManager.register(menu)
@@ -291,4 +298,39 @@ class NotebookTreeCell(
         }
         return true
     }
+
+    // =========================================================
+    // Tiny popup icons (no emoji => no "??")
+    // =========================================================
+    private fun iconSlot(icon: Node, size: Double = 14.0): Node =
+        StackPane(icon).apply {
+            minWidth = 22.0
+            prefWidth = 22.0
+            maxWidth = 22.0
+            alignment = Pos.CENTER
+            scaleX = size / 14.0
+            scaleY = size / 14.0
+            opacity = 0.85
+        }
+
+    private fun iconPencil(): Node = iconSlot(SVGPath().apply {
+        content = "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
+    })
+
+    private fun iconTrash(): Node = iconSlot(SVGPath().apply {
+        content = "M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z"
+    })
+
+    private fun iconPlus(): Node = iconSlot(SVGPath().apply {
+        content = "M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z"
+    })
+
+    private fun iconClock(): Node = iconSlot(SVGPath().apply {
+        content = "M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2zm1 11h-4V7h2v4h2v2z"
+    })
+
+    private fun iconFolderPlus(): Node = iconSlot(Group(
+        SVGPath().apply { content = "M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z" },
+        SVGPath().apply { content = "M12 10h2v2h2v2h-2v2h-2v-2h-2v-2h2v-2z" }
+    ))
 }
