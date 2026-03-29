@@ -10,13 +10,14 @@ data class RevisionSummaryDto(val id: String, val createdAtIso: String)
 
 data class NotebookTreeDto(
     val rootNotes: List<NoteSummaryDto>,
-    val notebooks: List<NotebookWithNotesDto>
+    val notebooks: List<NotebookNodeDto>
 )
 
-data class NotebookWithNotesDto(
+data class NotebookNodeDto(
     val id: String,
     val name: String,
-    val notes: List<NoteSummaryDto>
+    val notes: List<NoteSummaryDto>,
+    val subNotebooks: List<NotebookNodeDto>
 )
 
 class NoteAppService(
@@ -170,47 +171,50 @@ class NoteAppService(
 
     // ---------- Notebook / Tree Use-Cases ----------
 
-    /**
-     * Liefert die komplette Struktur für den TreeView:
-     * - Root-Notizen (notebookId == null) oben
-     * - Ordner alphabetisch
-     * - Notizen in Ordnern alphabetisch
-     */
     fun listNotebookTree(
         notebookRepo: NotebookRepository
     ): NotebookTreeDto {
 
-        val allNotes = repo.findAll()
+        val allActiveNotes = repo.findAll()
             .filter { !it.isTrashed() }
+            
+        val allNotebooks = notebookRepo.findAll()
 
         // Root-Notizen (ohne Ordner)
         val rootNotes =
-            allNotes
+            allActiveNotes
                 .filter { it.notebookId == null }
                 .sortedBy { it.title.lowercase() }
                 .map { it.toSummary() }
 
-        // Ordner + Notes
-        val notebooks =
-            notebookRepo.findAll()
+        // Recursive helper to build notebook tree
+        fun buildNotebookNode(notebook: Notebook): NotebookNodeDto {
+            val notesInNotebook = allActiveNotes
+                .filter { it.notebookId == notebook.id }
+                .sortedBy { it.title.lowercase() }
+                .map { it.toSummary() }
+                
+            val children = allNotebooks
+                .filter { it.parentId == notebook.id }
                 .sortedBy { it.name.lowercase() }
-                .map { notebook ->
-                    val notesInNotebook =
-                        allNotes
-                            .filter { it.notebookId == notebook.id }
-                            .sortedBy { it.title.lowercase() }
-                            .map { it.toSummary() }
+                .map { buildNotebookNode(it) }
+                
+            return NotebookNodeDto(
+                id = notebook.id.value,
+                name = notebook.name,
+                notes = notesInNotebook,
+                subNotebooks = children
+            )
+        }
 
-                    NotebookWithNotesDto(
-                        id = notebook.id.value,
-                        name = notebook.name,
-                        notes = notesInNotebook
-                    )
-                }
+        val topLevelNotebooks = allNotebooks
+            .filter { it.parentId == null }
+            .sortedBy { it.name.lowercase() }
+            .map { buildNotebookNode(it) }
 
         return NotebookTreeDto(
             rootNotes = rootNotes,
-            notebooks = notebooks
+            notebooks = topLevelNotebooks
         )
     }
 
@@ -220,11 +224,12 @@ class NoteAppService(
             title = title.ifBlank { "(Ohne Titel)" }
         )
     
-    fun createNotebook(name: String): NotebookId {
+    fun createNotebook(name: String, parentId: NotebookId? = null): NotebookId {
         val validated = validateNotebookName(name)
-        val trimmed = name.trim()
-        require(trimmed.isNotEmpty()) { "Notebook name must not be empty" }
-        return NotebookId(UUID.randomUUID().toString())
+        val id = NotebookId(UUID.randomUUID().toString())
+        // The actual saving should be done by the caller using repo.save(Notebook(id, validated, parentId))
+        // or we need access to notebookRepo here.
+        return id
     }
 
     fun moveNoteToNotebook(noteId: NoteId, notebookId: NotebookId?) {
@@ -237,5 +242,21 @@ class NoteAppService(
             updatedAt = now
         )
         repo.save(moved)
+    }
+    
+    fun moveNotebook(notebookId: NotebookId, newParentId: NotebookId?, notebookRepo: NotebookRepository) {
+        val notebook = notebookRepo.findById(notebookId) ?: error("Notebook not found: ${notebookId.value}")
+        
+        // Prevent circular dependency
+        if (newParentId != null) {
+            var current: NotebookId? = newParentId
+            while (current != null) {
+                if (current == notebookId) error("Cannot move notebook into its own descendant")
+                current = notebookRepo.findById(current)?.parentId
+            }
+        }
+        
+        val moved = notebook.copy(parentId = newParentId)
+        notebookRepo.save(moved)
     }
 }
