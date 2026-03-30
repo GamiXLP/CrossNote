@@ -48,16 +48,17 @@ fun NotebookTree(
     LaunchedEffect(dragDropState.draggedItemId) {
         while (dragDropState.draggedItemId != null) {
             val bounds = dragDropState.listBounds ?: break
-            val touchPos = dragDropState.getTouchWindowPosition()
+            // Use visual position (where the icon is) for scrolling triggers
+            val visualPos = dragDropState.getVisualWindowPosition()
             val threshold = 150f
             val maxSpeed = 20f
             
-            if (touchPos.y < bounds.top + threshold) {
-                val dist = (bounds.top + threshold - touchPos.y).coerceAtLeast(0f)
+            if (visualPos.y < bounds.top + threshold) {
+                val dist = (bounds.top + threshold - visualPos.y).coerceAtLeast(0f)
                 val speed = (dist / threshold).coerceIn(0f, 1f) * maxSpeed
                 scrollState.scrollBy(-speed)
-            } else if (touchPos.y > bounds.bottom - threshold) {
-                val dist = (touchPos.y - (bounds.bottom - threshold)).coerceAtLeast(0f)
+            } else if (visualPos.y > bounds.bottom - threshold) {
+                val dist = (visualPos.y - (bounds.bottom - threshold)).coerceAtLeast(0f)
                 val speed = (dist / threshold).coerceIn(0f, 1f) * maxSpeed
                 scrollState.scrollBy(speed)
             }
@@ -148,7 +149,7 @@ fun NotebookTree(
                             dragDropState = dragDropState,
                             expandedIds = expandedIds,
                             onToggleExpand = onToggleExpand,
-                            onNoteClick = onNoteClick,
+                            onNoteClick = { onNoteClick(it) },
                             onAddNote = onAddNoteToNotebook,
                             onAddSub = onAddSubNotebook,
                             onRename = onRenameNotebook,

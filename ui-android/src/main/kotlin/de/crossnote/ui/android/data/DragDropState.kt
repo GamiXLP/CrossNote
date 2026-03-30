@@ -14,6 +14,9 @@ class DragDropState {
     var containerWindowPos by mutableStateOf(Offset.Zero)
     var listBounds by mutableStateOf<Rect?>(null)
     
+    // The visual offset of the icon relative to the user's finger (in pixels)
+    var visualOffset by mutableStateOf(Offset.Zero)
+    
     val dropTargets = mutableStateMapOf<String?, Rect>()
     val dragSources = mutableStateMapOf<String, DragSourceEntry>()
     var onDropAction by mutableStateOf<(String?) -> Unit>({})
@@ -24,18 +27,20 @@ class DragDropState {
 
     fun getTouchWindowPosition(): Offset = dragStartWindowPos + touchOffsetInItem + dragOffset
     
+    fun getVisualWindowPosition(): Offset = getTouchWindowPosition() + visualOffset
+    
     fun getLocalDragPosition(): Offset = dragStartWindowPos + dragOffset - containerWindowPos
 
-    fun findTargetId(touchPos: Offset): String? {
+    fun findTargetId(position: Offset): String? {
         return dropTargets.entries
-            .filter { it.value.contains(touchPos) }
+            .filter { it.value.contains(position) }
             .minByOrNull { it.value.width * it.value.height }
             ?.key
     }
 
     fun isHovering(targetId: String?): Boolean {
-        val touchPos = getTouchWindowPosition()
-        return findTargetId(touchPos) == targetId
+        val visualPos = getVisualWindowPosition()
+        return findTargetId(visualPos) == targetId
     }
 }
 

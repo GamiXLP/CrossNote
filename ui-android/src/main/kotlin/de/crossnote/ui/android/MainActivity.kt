@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
                 val snackbarHostState = remember { SnackbarHostState() }
                 val scope = rememberCoroutineScope()
                 val dragDropState = rememberDragDropState()
+                val density = LocalDensity.current
 
                 var showAddRootNotebookDialog by remember { mutableStateOf(false) }
                 var renamingNotebook by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -148,6 +149,12 @@ class MainActivity : ComponentActivity() {
                                         dragDropState.dragOffset = Offset.Zero
                                         dragDropState.dragStartWindowPos = sourceEntry.bounds.topLeft
                                         dragDropState.touchOffsetInItem = touchPos - sourceEntry.bounds.topLeft
+                                        
+                                        // Set visual offset for the icon (slightly left and up)
+                                        dragDropState.visualOffset = Offset(
+                                            with(density) { -40.dp.toPx() },
+                                            with(density) { -60.dp.toPx() }
+                                        )
                                     }
                                 },
                                 onDrag = { change, dragAmount ->
@@ -158,8 +165,9 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onDragEnd = {
                                     if (dragDropState.draggedItemId != null) {
-                                        val touchPos = dragDropState.getTouchWindowPosition()
-                                        val targetId = dragDropState.findTargetId(touchPos)
+                                        // Calculate target based on visual icon position, not finger position
+                                        val visualPos = dragDropState.getVisualWindowPosition()
+                                        val targetId = dragDropState.findTargetId(visualPos)
                                         
                                         if (targetId != dragDropState.draggedItemId) {
                                             dragDropState.onDropAction(targetId)
@@ -309,14 +317,13 @@ class MainActivity : ComponentActivity() {
 
                         // Dragging Overlay
                         if (dragDropState.draggedItemId != null) {
-                            val density = LocalDensity.current
                             val touchLocal = dragDropState.getLocalDragPosition() + dragDropState.touchOffsetInItem
                             Surface(
                                 modifier = Modifier
                                     .graphicsLayer {
-                                        // Place the item icon to the left of the user's finger
-                                        translationX = touchLocal.x - with(density) { 150.dp.toPx() }
-                                        translationY = touchLocal.y - with(density) { 24.dp.toPx() }
+                                        // Use the visual offset for positioning the icon
+                                        translationX = touchLocal.x + dragDropState.visualOffset.x
+                                        translationY = touchLocal.y + dragDropState.visualOffset.y
                                         scaleX = 1.1f
                                         scaleY = 1.1f
                                         alpha = 0.8f
