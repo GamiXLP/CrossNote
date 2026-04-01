@@ -73,9 +73,18 @@ class NoteAppService(
         repo.save(existing.moveToTrash(clock.now()))
     }
 
-    fun restore(id: NoteId) {
+    fun restore(id: NoteId, notebookRepo: NotebookRepository) {
         val existing = repo.findById(id) ?: error("Note not found: ${id.value}")
-        repo.save(existing.restore(clock.now()))
+        
+        // If the note was in a notebook that is still trashed, move it to root
+        val nbId = existing.notebookId
+        val updatedNotebookId = if (nbId != null && notebookRepo.findById(nbId)?.trashedAt != null) {
+            null
+        } else {
+            nbId
+        }
+        
+        repo.save(existing.copy(trashedAt = null, notebookId = updatedNotebookId, updatedAt = clock.now()))
     }
 
     fun listActiveNotes(): List<NoteSummaryDto> =
@@ -330,7 +339,15 @@ class NoteAppService(
         val existing = notebookRepo.findById(id) ?: error("Notebook not found: ${id.value}")
         val now = clock.now()
         
-        notebookRepo.save(existing.copy(trashedAt = null))
+        // If the parent notebook is still trashed, move this notebook to root
+        val pId = existing.parentId
+        val updatedParentId = if (pId != null && notebookRepo.findById(pId)?.trashedAt != null) {
+            null
+        } else {
+            pId
+        }
+        
+        notebookRepo.save(existing.copy(trashedAt = null, parentId = updatedParentId))
         
         repo.findAll().filter { it.notebookId == id && it.isTrashed() }.forEach {
             repo.save(it.restore(now))

@@ -134,7 +134,7 @@ class NotesViewModel : ViewModel() {
     }
 
     fun restoreNote(id: String) {
-        noteAppService.restore(NoteId(id))
+        noteAppService.restore(NoteId(id), notebookRepo)
         refreshAll()
     }
 
