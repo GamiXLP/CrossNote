@@ -179,6 +179,7 @@ class NoteAppService(
             .filter { !it.isTrashed() }
             
         val allNotebooks = notebookRepo.findAll()
+            .filter { it.trashedAt == null }
 
         // Root-Notizen (ohne Ordner)
         val rootNotes =
@@ -218,6 +219,58 @@ class NoteAppService(
         )
     }
 
+    fun listTrashedNotebookTree(
+        notebookRepo: NotebookRepository
+    ): NotebookTreeDto {
+        val allTrashedNotes = repo.findAll().filter { it.isTrashed() }
+        val allNotebooks = notebookRepo.findAll()
+        
+        val rootTrashedNotes = allTrashedNotes
+            .filter { note ->
+                val nbId = note.notebookId
+                if (nbId == null) true
+                else notebookRepo.findById(nbId)?.trashedAt == null 
+            }
+            .sortedByDescending { it.updatedAt }
+            .map { it.toSummary() }
+
+        fun buildTrashedNode(notebook: Notebook): NotebookNodeDto {
+            val notesInNotebook = allTrashedNotes
+                .filter { it.notebookId == notebook.id }
+                .sortedBy { it.title.lowercase() }
+                .map { it.toSummary() }
+                
+            val children = allNotebooks
+                .filter { it.parentId == notebook.id }
+                .sortedBy { it.name.lowercase() }
+                .map { buildTrashedNode(it) }
+                
+            return NotebookNodeDto(
+                id = notebook.id.value,
+                name = notebook.name,
+                notes = notesInNotebook,
+                subNotebooks = children
+            )
+        }
+
+        val topLevelTrashedNotebooks = allNotebooks
+            .filter { notebook ->
+                val pId = notebook.parentId
+                val isTrashed = notebook.trashedAt != null
+                val isTopLevelInTrash = if (pId == null) true
+                else notebookRepo.findById(pId)?.trashedAt == null
+                
+                isTrashed && isTopLevelInTrash
+            }
+            .sortedBy { it.name.lowercase() }
+            .map { buildTrashedNode(it) }
+
+        return NotebookTreeDto(
+            rootNotes = rootTrashedNotes,
+            notebooks = topLevelTrashedNotebooks
+        )
+    }
+
     private fun Note.toSummary(): NoteSummaryDto =
         NoteSummaryDto(
             id = id.value,
@@ -227,8 +280,6 @@ class NoteAppService(
     fun createNotebook(name: String, parentId: NotebookId? = null): NotebookId {
         val validated = validateNotebookName(name)
         val id = NotebookId(UUID.randomUUID().toString())
-        // The actual saving should be done by the caller using repo.save(Notebook(id, validated, parentId))
-        // or we need access to notebookRepo here.
         return id
     }
 
@@ -258,5 +309,51 @@ class NoteAppService(
         
         val moved = notebook.copy(parentId = newParentId)
         notebookRepo.save(moved)
+    }
+
+    fun moveNotebookToTrash(id: NotebookId, notebookRepo: NotebookRepository) {
+        val existing = notebookRepo.findById(id) ?: error("Notebook not found: ${id.value}")
+        val now = clock.now()
+        
+        notebookRepo.save(existing.copy(trashedAt = now))
+        
+        repo.findAll().filter { it.notebookId == id && !it.isTrashed() }.forEach {
+            repo.save(it.moveToTrash(now))
+        }
+        
+        notebookRepo.findAll().filter { it.parentId == id && it.trashedAt == null }.forEach {
+            moveNotebookToTrash(it.id, notebookRepo)
+        }
+    }
+
+    fun restoreNotebook(id: NotebookId, notebookRepo: NotebookRepository) {
+        val existing = notebookRepo.findById(id) ?: error("Notebook not found: ${id.value}")
+        val now = clock.now()
+        
+        notebookRepo.save(existing.copy(trashedAt = null))
+        
+        repo.findAll().filter { it.notebookId == id && it.isTrashed() }.forEach {
+            repo.save(it.restore(now))
+        }
+        
+        notebookRepo.findAll().filter { it.parentId == id && it.trashedAt != null }.forEach {
+            restoreNotebook(it.id, notebookRepo)
+        }
+    }
+
+    fun purgeNotebookPermanently(id: NotebookId, notebookRepo: NotebookRepository) {
+        // Purge all notes in this notebook
+        repo.findAll().filter { it.notebookId == id }.forEach {
+            if (it.isTrashed()) {
+                purgeNotePermanently(it.id)
+            }
+        }
+        
+        // Purge sub-notebooks
+        notebookRepo.findAll().filter { it.parentId == id }.forEach {
+            purgeNotebookPermanently(it.id, notebookRepo)
+        }
+        
+        notebookRepo.delete(id)
     }
 }

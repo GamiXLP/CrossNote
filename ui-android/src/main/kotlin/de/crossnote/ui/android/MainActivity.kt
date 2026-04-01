@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
                 val notes by viewModel.notes.collectAsState()
                 val trashedNotes by viewModel.trashedNotes.collectAsState()
                 val notebookTree by viewModel.notebookTree.collectAsState()
+                val trashedNotebookTree by viewModel.trashedNotebookTree.collectAsState()
                 val currentNote by viewModel.currentNote.collectAsState()
                 val currentScreen by viewModel.currentScreen.collectAsState()
                 val revisions by viewModel.revisions.collectAsState()
@@ -57,7 +58,8 @@ class MainActivity : ComponentActivity() {
                 val dragDropState = rememberDragDropState()
                 val density = LocalDensity.current
 
-                var showAddRootNotebookDialog by remember { mutableStateOf(false) }
+                var showAddNotebookDialog by remember { mutableStateOf(false) }
+                var parentForNewNotebook by remember { mutableStateOf<String?>(null) }
                 var renamingNotebook by remember { mutableStateOf<Pair<String, String>?>(null) }
 
                 LaunchedEffect(errorMessage) {
@@ -260,7 +262,10 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                         Screen.Notebooks -> {
-                                            FloatingActionButton(onClick = { showAddRootNotebookDialog = true }) {
+                                            FloatingActionButton(onClick = { 
+                                                parentForNewNotebook = null
+                                                showAddNotebookDialog = true 
+                                            }) {
                                                 Icon(Icons.Default.Add, contentDescription = "Add Notebook")
                                             }
                                         }
@@ -288,9 +293,14 @@ class MainActivity : ComponentActivity() {
                                     currentScreen == Screen.Trash -> {
                                         TrashList(
                                             notes = trashedNotes, 
+                                            notebookTree = trashedNotebookTree,
+                                            expandedIds = expandedIds,
+                                            onToggleExpand = { viewModel.toggleNotebookExpanded(it) },
                                             onNoteClick = { viewModel.selectNote(it.id) },
                                             onRestore = { viewModel.restoreNote(it.id) },
-                                            onPurge = { viewModel.purgeNote(it.id) }
+                                            onPurge = { viewModel.purgeNote(it.id) },
+                                            onRestoreNotebook = { viewModel.restoreNotebook(it) },
+                                            onPurgeNotebook = { viewModel.purgeNotebook(it) }
                                         )
                                     }
                                     currentScreen == Screen.Notebooks -> {
@@ -301,7 +311,10 @@ class MainActivity : ComponentActivity() {
                                             onToggleExpand = { viewModel.toggleNotebookExpanded(it) },
                                             onNoteClick = { viewModel.selectNote(it.id) },
                                             onAddNoteToNotebook = { viewModel.startNewNote(it) },
-                                            onAddSubNotebook = { viewModel.createNotebook("New Sub-Notebook", it) },
+                                            onAddSubNotebook = { parentId ->
+                                                parentForNewNotebook = parentId
+                                                showAddNotebookDialog = true 
+                                            },
                                             onRenameNotebook = { id, name -> renamingNotebook = id to name },
                                             onDeleteNotebook = { viewModel.deleteNotebook(it) },
                                             onMoveNotebook = { id, target -> viewModel.moveNotebook(id, target) },
@@ -344,13 +357,13 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    if (showAddRootNotebookDialog) {
+                    if (showAddNotebookDialog) {
                         var name by remember { mutableStateOf("") }
                         val focusRequester = remember { FocusRequester() }
 
                         AlertDialog(
-                            onDismissRequest = { showAddRootNotebookDialog = false },
-                            title = { Text("New Root Notebook") },
+                            onDismissRequest = { showAddNotebookDialog = false },
+                            title = { Text(if (parentForNewNotebook == null) "New Root Notebook" else "New Sub-Notebook") },
                             text = {
                                 TextField(
                                     value = name,
@@ -360,11 +373,14 @@ class MainActivity : ComponentActivity() {
                                 )
                             },
                             confirmButton = {
-                                Button(onClick = { viewModel.createNotebook(name); showAddRootNotebookDialog = false }, enabled = name.isNotBlank()) {
+                                Button(onClick = { 
+                                    viewModel.createNotebook(name, parentForNewNotebook)
+                                    showAddNotebookDialog = false 
+                                }, enabled = name.isNotBlank()) {
                                     Text("Save")
                                 }
                             },
-                            dismissButton = { TextButton(onClick = { showAddRootNotebookDialog = false }) { Text("Cancel") } }
+                            dismissButton = { TextButton(onClick = { showAddNotebookDialog = false }) { Text("Cancel") } }
                         )
 
                         LaunchedEffect(Unit) {

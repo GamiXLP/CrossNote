@@ -39,6 +39,9 @@ class NotesViewModel : ViewModel() {
 
     private val _trashedNotes = MutableStateFlow<List<NoteSummaryDto>>(emptyList())
     val trashedNotes: StateFlow<List<NoteSummaryDto>> = _trashedNotes.asStateFlow()
+    
+    private val _trashedNotebookTree = MutableStateFlow<NotebookTreeDto?>(null)
+    val trashedNotebookTree: StateFlow<NotebookTreeDto?> = _trashedNotebookTree.asStateFlow()
 
     private val _notebookTree = MutableStateFlow<NotebookTreeDto?>(null)
     val notebookTree: StateFlow<NotebookTreeDto?> = _notebookTree.asStateFlow()
@@ -69,6 +72,7 @@ class NotesViewModel : ViewModel() {
         _notes.value = noteAppService.listActiveNotes()
         _trashedNotes.value = noteAppService.listTrashedNotes()
         _notebookTree.value = noteAppService.listNotebookTree(notebookRepo)
+        _trashedNotebookTree.value = noteAppService.listTrashedNotebookTree(notebookRepo)
         
         _currentNote.value?.let { 
             if (it.id.value != "temp-new") {
@@ -162,19 +166,17 @@ class NotesViewModel : ViewModel() {
     }
 
     fun deleteNotebook(id: String) {
-        val nbId = NotebookId(id)
-        // Find all notes and subnotebooks recursively and move to trash
-        fun trashRecursively(notebookId: NotebookId) {
-            noteRepo.findAll().filter { it.notebookId == notebookId }.forEach {
-                noteAppService.moveToTrash(it.id)
-            }
-            notebookRepo.findAll().filter { it.parentId == notebookId }.forEach {
-                trashRecursively(it.id)
-            }
-            notebookRepo.delete(notebookId)
-        }
-        
-        trashRecursively(nbId)
+        noteAppService.moveNotebookToTrash(NotebookId(id), notebookRepo)
+        refreshAll()
+    }
+    
+    fun restoreNotebook(id: String) {
+        noteAppService.restoreNotebook(NotebookId(id), notebookRepo)
+        refreshAll()
+    }
+
+    fun purgeNotebook(id: String) {
+        noteAppService.purgeNotebookPermanently(NotebookId(id), notebookRepo)
         refreshAll()
     }
     
