@@ -20,6 +20,11 @@ import crossnote.app.note.NoteSummaryDto
 import crossnote.app.note.NotebookNodeDto
 import crossnote.app.note.NotebookTreeDto
 import crossnote.app.note.RevisionSummaryDto
+import crossnote.domain.revision.Revision
+import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun TrashList(
@@ -221,20 +226,54 @@ fun NoteEditor(
     content: String,
     isTrashed: Boolean,
     revisions: List<RevisionSummaryDto>,
-    onSave: (String, String) -> Unit,
+    previewRevision: Revision?,
+    onClose: (String, String) -> Unit,
+    onAutoSave: (String, String) -> Unit,
+    onSelectRevision: (String) -> Unit,
+    onClearPreview: () -> Unit,
     onRestoreRevision: (String) -> Unit
 ) {
-    var editedTitle by remember { mutableStateOf(title) }
-    var editedContent by remember { mutableStateOf(content) }
+    var editedTitle by remember(title, previewRevision) { 
+        mutableStateOf(previewRevision?.title ?: title) 
+    }
+    var editedContent by remember(content, previewRevision) { 
+        mutableStateOf(previewRevision?.content ?: content) 
+    }
     var showRevisions by remember { mutableStateOf(false) }
 
+    val isPreview = previewRevision != null
+
+    // Auto-save logic
+    if (!isPreview && !isTrashed) {
+        LaunchedEffect(editedTitle, editedContent) {
+            if (editedTitle != title || editedContent != content) {
+                delay(10000L)
+                onAutoSave(editedTitle, editedContent)
+            }
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        if (isPreview) {
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    "Previewing Revision from ${previewRevision?.createdAt}",
+                    modifier = Modifier.padding(8.dp),
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+        }
+
         OutlinedTextField(
             value = editedTitle,
             onValueChange = { editedTitle = it },
             label = { Text("Title") },
             modifier = Modifier.fillMaxWidth(),
-            readOnly = isTrashed
+            readOnly = isTrashed || isPreview
         )
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
@@ -242,8 +281,18 @@ fun NoteEditor(
             onValueChange = { editedContent = it },
             label = { Text("Content") },
             modifier = Modifier.fillMaxWidth().weight(1f),
-            readOnly = isTrashed
+            readOnly = isTrashed || isPreview
         )
+        
+        if (!isPreview && !isTrashed) {
+            Text(
+                "Note will be automatically saved 10 seconds after the last change.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+
         Spacer(modifier = Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             if (revisions.isNotEmpty()) {
@@ -254,24 +303,49 @@ fun NoteEditor(
                 Spacer(Modifier.width(1.dp))
             }
             
-            if (!isTrashed) {
-                Button(onClick = { onSave(editedTitle, editedContent) }) {
-                    Text("Save")
+            Row {
+                if (isPreview) {
+                    TextButton(onClick = { onClearPreview() }) {
+                        Text("Cancel Preview")
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Button(onClick = { onRestoreRevision(previewRevision!!.id.value); onClearPreview() }) {
+                        Text("Restore")
+                    }
+                } else if (!isTrashed) {
+                    Button(onClick = { onClose(editedTitle, editedContent) }) {
+                        Text("Close")
+                    }
+                } else {
+                    Button(onClick = { onClose(editedTitle, editedContent) }) {
+                        Text("Close")
+                    }
                 }
             }
         }
     }
 
     if (showRevisions) {
+        val formatter = remember {
+            DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss")
+                .withZone(ZoneId.systemDefault())
+        }
+
         AlertDialog(
             onDismissRequest = { showRevisions = false },
             title = { Text("Revisions") },
             text = {
                 LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
-                    items(revisions) { rev ->
+                    items(revisions.asReversed()) { rev ->
+                        val instant = runCatching { Instant.parse(rev.createdAtIso) }.getOrNull()
+                        val dateText = if (instant != null) formatter.format(instant) else rev.createdAtIso
+                        
                         ListItem(
-                            headlineContent = { Text(rev.createdAtIso) },
-                            modifier = Modifier.clickable { onRestoreRevision(rev.id); showRevisions = false }
+                            headlineContent = { Text(dateText) },
+                            modifier = Modifier.clickable { 
+                                onSelectRevision(rev.id)
+                                showRevisions = false 
+                            }
                         )
                         HorizontalDivider()
                     }

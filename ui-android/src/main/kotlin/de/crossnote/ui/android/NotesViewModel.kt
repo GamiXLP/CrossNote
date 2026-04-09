@@ -1,13 +1,20 @@
 package de.crossnote.ui.android
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.res.Configuration
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import crossnote.app.note.NoteAppService
 import crossnote.app.note.NoteSummaryDto
 import crossnote.app.note.NotebookTreeDto
 import crossnote.app.note.RevisionSummaryDto
 import crossnote.domain.note.*
+import crossnote.domain.revision.Revision
 import crossnote.domain.revision.RevisionId
+import crossnote.domain.revision.RevisionRepository
+import crossnote.domain.settings.SettingsRepository
+import crossnote.domain.settings.getBoolean
+import crossnote.domain.settings.setBoolean
 import crossnote.infra.persistence.*
 import de.crossnote.ui.android.data.Screen
 import kotlinx.coroutines.Dispatchers
@@ -18,23 +25,42 @@ import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.nio.file.Paths
 import java.time.Duration
 import java.time.Instant
 
-class NotesViewModel : ViewModel() {
+class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
-    companion object {
-        private val noteRepo = InMemoryNoteRepository()
-        private val notebookRepo = InMemoryNotebookRepository()
-        private val revisionRepo = InMemoryRevisionRepository()
-        private val idGenerator = UuidIdGenerator()
-        private val clock = SystemClock()
+    private val db: SqliteDatabase
+    private val noteRepo: NoteRepository
+    private val notebookRepo: NotebookRepository
+    private val revisionRepo: RevisionRepository
+    private val settingsRepo: SettingsRepository
+    private val noteAppService: NoteAppService
+
+    private var currentSessionRevisionId: String? = null
+
+    init {
+        // Ensure SQLDroid driver is loaded
+        try {
+            Class.forName("org.sqldroid.SQLDroidDriver")
+        } catch (e: ClassNotFoundException) {
+            // Might be on desktop or not yet synced
+        }
+
+        val dbPath = application.getDatabasePath("crossnote.db").toPath()
+        db = SqliteDatabase(dbPath)
+        noteRepo = SqliteNoteRepository(db)
+        notebookRepo = SqliteNotebookRepository(db)
+        revisionRepo = SqliteRevisionRepository(db)
+        settingsRepo = SqliteSettingsRepository(db)
         
-        private val noteAppService = NoteAppService(
+        noteAppService = NoteAppService(
             repo = noteRepo,
+            notebookRepo = notebookRepo,
             revisionRepo = revisionRepo,
-            ids = idGenerator,
-            clock = clock
+            ids = UuidIdGenerator(),
+            clock = SystemClock()
         )
     }
 
@@ -58,6 +84,9 @@ class NotesViewModel : ViewModel() {
 
     private val _revisions = MutableStateFlow<List<RevisionSummaryDto>>(emptyList())
     val revisions: StateFlow<List<RevisionSummaryDto>> = _revisions.asStateFlow()
+
+    private val _previewRevision = MutableStateFlow<Revision?>(null)
+    val previewRevision: StateFlow<Revision?> = _previewRevision.asStateFlow()
     
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -68,21 +97,27 @@ class NotesViewModel : ViewModel() {
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
+    private val _isDarkMode = MutableStateFlow(false)
+    val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
+
     init {
+        val isSystemInDarkMode = (application.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        _isDarkMode.value = settingsRepo.getBoolean("dark_mode", isSystemInDarkMode)
         refreshAll()
     }
 
     fun setScreen(screen: Screen) {
         _currentScreen.value = screen
         _currentNote.value = null
+        currentSessionRevisionId = null
         refreshAll()
     }
 
     fun refreshAll() {
         _notes.value = noteAppService.listActiveNotes()
         _trashedNotes.value = noteAppService.listTrashedNotes()
-        _notebookTree.value = noteAppService.listNotebookTree(notebookRepo)
-        _trashedNotebookTree.value = noteAppService.listTrashedNotebookTree(notebookRepo)
+        _notebookTree.value = noteAppService.listNotebookTree()
+        _trashedNotebookTree.value = noteAppService.listTrashedNotebookTree()
         
         _currentNote.value?.let { 
             if (it.id.value != "temp-new") {
@@ -95,8 +130,14 @@ class NotesViewModel : ViewModel() {
         _errorMessage.value = null
     }
 
+    fun setDarkMode(enabled: Boolean) {
+        _isDarkMode.value = enabled
+        settingsRepo.setBoolean("dark_mode", enabled)
+    }
+
     // --- Note Actions ---
     fun startNewNote(notebookId: String? = null) {
+        currentSessionRevisionId = null
         val id = NoteId("temp-new")
         _currentNote.value = Note(
             id = id,
@@ -108,33 +149,51 @@ class NotesViewModel : ViewModel() {
             trashedAt = null
         )
         _revisions.value = emptyList()
+        _previewRevision.value = null
     }
 
     fun saveNewNote(title: String, content: String, notebookId: NotebookId?) {
-        noteAppService.createNote(title, content, notebookId)
+        val newId = noteAppService.createNote(title, content, notebookId)
+        _currentNote.value = noteAppService.getNote(newId)
         refreshAll()
-        closeNote()
     }
 
     fun selectNote(id: String) {
+        currentSessionRevisionId = null
         val note = noteAppService.getNote(NoteId(id))
         _currentNote.value = note
         _revisions.value = noteAppService.listRevisions(note.id)
+        _previewRevision.value = null
     }
 
     fun closeNote() {
         _currentNote.value = null
         _revisions.value = emptyList()
+        _previewRevision.value = null
+        currentSessionRevisionId = null
         refreshAll()
     }
 
     fun updateNote(id: String, title: String, content: String) {
         if (id == "temp-new") {
             saveNewNote(title, content, _currentNote.value?.notebookId)
+            closeNote()
         } else {
-            noteAppService.updateNote(NoteId(id), title, content)
+            noteAppService.updateNote(NoteId(id), title, content, currentSessionRevisionId)
             refreshAll()
             closeNote()
+        }
+    }
+
+    fun persistNote(id: String, title: String, content: String) {
+        if (id == "temp-new") {
+            // Auto-save creates the note if it has content/title
+            if (title.isNotBlank() || content.isNotBlank()) {
+                saveNewNote(title, content, _currentNote.value?.notebookId)
+            }
+        } else {
+            currentSessionRevisionId = noteAppService.updateNote(NoteId(id), title, content, currentSessionRevisionId)
+            refreshAll()
         }
     }
 
@@ -144,7 +203,7 @@ class NotesViewModel : ViewModel() {
     }
 
     fun restoreNote(id: String) {
-        noteAppService.restore(NoteId(id), notebookRepo)
+        noteAppService.restore(NoteId(id))
         refreshAll()
     }
 
@@ -164,35 +223,37 @@ class NotesViewModel : ViewModel() {
 
     // --- Notebook Actions ---
     fun createNotebook(name: String, parentId: String? = null) {
-        val id = NotebookId(java.util.UUID.randomUUID().toString())
-        notebookRepo.save(Notebook(id, name, parentId?.let { NotebookId(it) }))
+        noteAppService.createNotebook(name, parentId?.let { NotebookId(it) })
         refreshAll()
     }
 
     fun renameNotebook(id: String, newName: String) {
+        // We use domain logic directly here or via service. Let's use service if possible.
+        // Actually NoteAppService doesn't have renameNotebook, let's add it or keep repo usage.
+        // For consistency let's just use the notebookRepo since it's already here.
         val notebook = notebookRepo.findById(NotebookId(id)) ?: return
-        notebookRepo.save(notebook.copy(name = newName))
+        notebookRepo.save(notebook.copy(name = newName, updatedAt = Instant.now()))
         refreshAll()
     }
 
     fun deleteNotebook(id: String) {
-        noteAppService.moveNotebookToTrash(NotebookId(id), notebookRepo)
+        noteAppService.moveNotebookToTrash(NotebookId(id))
         refreshAll()
     }
     
     fun restoreNotebook(id: String) {
-        noteAppService.restoreNotebook(NotebookId(id), notebookRepo)
+        noteAppService.restoreNotebook(NotebookId(id))
         refreshAll()
     }
 
     fun purgeNotebook(id: String) {
-        noteAppService.purgeNotebookPermanently(NotebookId(id), notebookRepo)
+        noteAppService.purgeNotebookPermanently(NotebookId(id))
         refreshAll()
     }
     
     fun moveNotebook(notebookId: String, newParentId: String?) {
         try {
-            noteAppService.moveNotebook(NotebookId(notebookId), newParentId?.let { NotebookId(it) }, notebookRepo)
+            noteAppService.moveNotebook(NotebookId(notebookId), newParentId?.let { NotebookId(it) })
             refreshAll()
         } catch (e: Exception) {
             _errorMessage.value = e.message
@@ -209,6 +270,14 @@ class NotesViewModel : ViewModel() {
     }
 
     // --- Revision Actions ---
+    fun selectRevisionForPreview(revisionId: String) {
+        _previewRevision.value = noteAppService.getRevision(RevisionId(revisionId))
+    }
+
+    fun clearPreview() {
+        _previewRevision.value = null
+    }
+
     fun restoreRevision(noteId: String, revisionId: String) {
         noteAppService.restoreFromRevision(NoteId(noteId), RevisionId(revisionId))
         selectNote(noteId)
@@ -229,7 +298,7 @@ class NotesViewModel : ViewModel() {
                 client.newCall(nbPullReq).execute().use { response ->
                     if (response.isSuccessful) {
                         response.body?.string()?.let {
-                            noteAppService.mergeNotebooksFromWire(it, notebookRepo)
+                            noteAppService.mergeNotebooksFromWire(it)
                         }
                     }
                 }
@@ -245,7 +314,7 @@ class NotesViewModel : ViewModel() {
                 }
 
                 // 3. Push Notebooks
-                val nbPushBody = noteAppService.getAllNotebooksAsWire(notebookRepo)
+                val nbPushBody = noteAppService.getAllNotebooksAsWire()
                 val nbPushReq = Request.Builder()
                     .url("http://$host:$port/notebooks/push")
                     .post(nbPushBody.toRequestBody())
@@ -271,5 +340,10 @@ class NotesViewModel : ViewModel() {
                 _isSyncing.value = false
             }
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        db.close()
     }
 }

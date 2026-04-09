@@ -44,6 +44,7 @@ dependencies {
     implementation(project(":core-application"))
     implementation(project(":infra-persistence"))
 
+    implementation(libs.sqldroid)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

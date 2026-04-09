@@ -24,6 +24,7 @@ data class NotebookNodeDto(
 
 class NoteAppService(
     private val repo: NoteRepository,
+    private val notebookRepo: NotebookRepository,
     private val revisionRepo: RevisionRepository,
     private val ids: IdGenerator,
     private val clock: Clock
@@ -52,19 +53,39 @@ class NoteAppService(
         return note.id
     }
 
-    fun updateNote(id: NoteId, title: String, content: String) {
+    /**
+     * Updates a note and handles revision creation.
+     * If [sessionRevisionId] is provided, it will overwrite that specific revision
+     * instead of creating a new one.
+     * Returns the revision ID used for this session.
+     */
+    fun updateNote(
+        id: NoteId,
+        title: String,
+        content: String,
+        sessionRevisionId: String? = null
+    ): String? {
         val existing = repo.findById(id) ?: error("Note not found: ${id.value}")
 
+        val validatedTitle = validateNoteTitle(title)
+        if (existing.title == validatedTitle && existing.content == content) {
+            return sessionRevisionId
+        }
+
+        val revId = sessionRevisionId ?: UUID.randomUUID().toString()
+        
         // Revision = Zustand VOR der Änderung
-        saveRevisionSnapshot(existing)
+        saveRevisionSnapshot(existing, revId)
 
         val now = clock.now()
         val updated = existing.copy(
-            title = validateNoteTitle(title),
+            title = validatedTitle,
             content = content,
             updatedAt = now
         )
         repo.save(updated)
+        
+        return revId
     }
 
     fun getNote(id: NoteId): Note =
@@ -75,7 +96,7 @@ class NoteAppService(
         repo.save(existing.moveToTrash(clock.now()))
     }
 
-    fun restore(id: NoteId, notebookRepo: NotebookRepository) {
+    fun restore(id: NoteId) {
         val existing = repo.findById(id) ?: error("Note not found: ${id.value}")
         
         // If the note was in a notebook that is still trashed, move it to root
@@ -121,7 +142,7 @@ class NoteAppService(
         }
 
         // Revision vom aktuellen Zustand speichern (damit Restore auch rückgängig wäre)
-        saveRevisionSnapshot(note)
+        saveRevisionSnapshot(note, UUID.randomUUID().toString())
 
         val now = clock.now()
         val restored = note.copy(
@@ -132,9 +153,9 @@ class NoteAppService(
         repo.save(restored)
     }
 
-    private fun saveRevisionSnapshot(note: Note) {
+    private fun saveRevisionSnapshot(note: Note, revisionId: String) {
         val rev = Revision(
-            id = RevisionId(UUID.randomUUID().toString()),
+            id = RevisionId(revisionId),
             noteId = note.id,
             title = note.title,
             content = note.content,
@@ -182,9 +203,7 @@ class NoteAppService(
 
     // ---------- Notebook / Tree Use-Cases ----------
 
-    fun listNotebookTree(
-        notebookRepo: NotebookRepository
-    ): NotebookTreeDto {
+    fun listNotebookTree(): NotebookTreeDto {
 
         val allActiveNotes = repo.findAll()
             .filter { !it.isTrashed() }
@@ -230,9 +249,7 @@ class NoteAppService(
         )
     }
 
-    fun listTrashedNotebookTree(
-        notebookRepo: NotebookRepository
-    ): NotebookTreeDto {
+    fun listTrashedNotebookTree(): NotebookTreeDto {
         val allTrashedNotes = repo.findAll().filter { it.isTrashed() }
         val allNotebooks = notebookRepo.findAll()
         
@@ -291,6 +308,8 @@ class NoteAppService(
     fun createNotebook(name: String, parentId: NotebookId? = null): NotebookId {
         val validated = validateNotebookName(name)
         val id = NotebookId(UUID.randomUUID().toString())
+        val notebook = Notebook(id, validated, parentId, clock.now())
+        notebookRepo.save(notebook)
         return id
     }
 
@@ -306,7 +325,7 @@ class NoteAppService(
         repo.save(moved)
     }
     
-    fun moveNotebook(notebookId: NotebookId, newParentId: NotebookId?, notebookRepo: NotebookRepository) {
+    fun moveNotebook(notebookId: NotebookId, newParentId: NotebookId?) {
         val notebook = notebookRepo.findById(notebookId) ?: error("Notebook not found: ${notebookId.value}")
         
         // Prevent circular dependency
@@ -318,26 +337,26 @@ class NoteAppService(
             }
         }
         
-        val moved = notebook.copy(parentId = newParentId)
+        val moved = notebook.copy(parentId = newParentId, updatedAt = clock.now())
         notebookRepo.save(moved)
     }
 
-    fun moveNotebookToTrash(id: NotebookId, notebookRepo: NotebookRepository) {
+    fun moveNotebookToTrash(id: NotebookId) {
         val existing = notebookRepo.findById(id) ?: error("Notebook not found: ${id.value}")
         val now = clock.now()
         
-        notebookRepo.save(existing.copy(trashedAt = now))
+        notebookRepo.save(existing.copy(trashedAt = now, updatedAt = now))
         
         repo.findAll().filter { it.notebookId == id && !it.isTrashed() }.forEach {
             repo.save(it.moveToTrash(now))
         }
         
         notebookRepo.findAll().filter { it.parentId == id && it.trashedAt == null }.forEach {
-            moveNotebookToTrash(it.id, notebookRepo)
+            moveNotebookToTrash(it.id)
         }
     }
 
-    fun restoreNotebook(id: NotebookId, notebookRepo: NotebookRepository) {
+    fun restoreNotebook(id: NotebookId) {
         val existing = notebookRepo.findById(id) ?: error("Notebook not found: ${id.value}")
         val now = clock.now()
         
@@ -349,18 +368,18 @@ class NoteAppService(
             pId
         }
         
-        notebookRepo.save(existing.copy(trashedAt = null, parentId = updatedParentId))
+        notebookRepo.save(existing.copy(trashedAt = null, parentId = updatedParentId, updatedAt = now))
         
         repo.findAll().filter { it.notebookId == id && it.isTrashed() }.forEach {
             repo.save(it.restore(now))
         }
         
         notebookRepo.findAll().filter { it.parentId == id && it.trashedAt != null }.forEach {
-            restoreNotebook(it.id, notebookRepo)
+            restoreNotebook(it.id)
         }
     }
 
-    fun purgeNotebookPermanently(id: NotebookId, notebookRepo: NotebookRepository) {
+    fun purgeNotebookPermanently(id: NotebookId) {
         // Purge all notes in this notebook
         repo.findAll().filter { it.notebookId == id }.forEach {
             if (it.isTrashed()) {
@@ -370,7 +389,7 @@ class NoteAppService(
         
         // Purge sub-notebooks
         notebookRepo.findAll().filter { it.parentId == id }.forEach {
-            purgeNotebookPermanently(it.id, notebookRepo)
+            purgeNotebookPermanently(it.id)
         }
         
         notebookRepo.delete(id)
@@ -378,38 +397,70 @@ class NoteAppService(
 
     // ---------- Sync Merging ----------
 
-    fun mergeNotesFromWire(body: String) {
-        val remoteNotes = NoteWire.decodeLines(body)
-        for (remote in remoteNotes) {
-            val local = repo.findById(remote.id)
-            if (local == null) {
-                repo.save(remote)
-            } else if (remote.updatedAt.isAfter(local.updatedAt)) {
-                repo.save(remote)
-            }
+    fun mergeNote(remote: Note): Boolean {
+        val local = repo.findById(remote.id)
+        if (local == null) {
+            repo.save(remote)
+            return true
         }
+
+        val isDifferent = local.title != remote.title || 
+                        local.content != remote.content || 
+                        local.notebookId != remote.notebookId || 
+                        local.trashedAt != remote.trashedAt
+
+        if (!isDifferent) return false
+
+        if (remote.updatedAt.isAfter(local.updatedAt)) {
+            // Remote is newer: Save local as revision (backup) and apply remote
+            if (local.title != remote.title || local.content != remote.content) {
+                saveRevisionSnapshot(local, "sync-backup-" + UUID.randomUUID().toString())
+            }
+            repo.save(remote)
+            return true
+        } else if (remote.updatedAt == local.updatedAt) {
+            // Conflict: Same timestamp, different content
+            saveRevisionSnapshot(local, "conflict-" + UUID.randomUUID().toString())
+            repo.save(remote)
+            return true
+        }
+        return false
     }
 
-    fun mergeNotebooksFromWire(body: String, notebookRepo: NotebookRepository) {
-        val remoteNotebooks = NotebookWire.decodeLines(body)
-        for (remote in remoteNotebooks) {
-            val local = notebookRepo.findById(remote.id)
-            if (local == null) {
-                notebookRepo.save(remote)
-            } else {
-                // Since Notebooks don't have updatedAt yet, we just overwrite if local was trashed but remote isn't, or vice versa?
-                // For simplicity, let's assume we always take remote if it's "newer" (but we don't have timestamp).
-                // Let's just save if it's different.
-                if (local != remote) {
-                    notebookRepo.save(remote)
-                }
-            }
+    fun mergeNotebook(remote: Notebook): Boolean {
+        val local = notebookRepo.findById(remote.id)
+        if (local == null) {
+            notebookRepo.save(remote)
+            return true
         }
+        if (remote.updatedAt.isAfter(local.updatedAt)) {
+            notebookRepo.save(remote)
+            return true
+        }
+        return false
+    }
+
+    fun mergeNotesFromWire(body: String): Int {
+        val remoteNotes = NoteWire.decodeLines(body)
+        var appliedCount = 0
+        for (remote in remoteNotes) {
+            if (mergeNote(remote)) appliedCount++
+        }
+        return appliedCount
+    }
+
+    fun mergeNotebooksFromWire(body: String): Int {
+        val remoteNotebooks = NotebookWire.decodeLines(body)
+        var appliedCount = 0
+        for (remote in remoteNotebooks) {
+            if (mergeNotebook(remote)) appliedCount++
+        }
+        return appliedCount
     }
 
     fun getAllNotesAsWire(): String =
         NoteWire.encodeLines(repo.findAll())
 
-    fun getAllNotebooksAsWire(notebookRepo: NotebookRepository): String =
-        NotebookWire.encodeLines(notebookRepo.findAll())
+    fun getAllNotebooksAsWire(): String =
+        NotebookWire.encodeLines(notebookRepo.findAllIncludingTrashed())
 }

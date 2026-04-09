@@ -50,15 +50,12 @@ class NotebookActions(
 
         val raw = result.get()
 
-        val name = try {
-            validateNotebookName(raw)
+        try {
+            service.createNotebook(raw, parent)
         } catch (e: ValidationException) {
             DialogsExt.warn(e.message ?: "Ungültiger Ordnername")
             return
         }
-
-        val id = NotebookId(UUID.randomUUID().toString())
-        notebookRepo.save(Notebook(id, name, parentId = parent))
 
         onAfterChange()
     }
@@ -89,38 +86,21 @@ class NotebookActions(
         // Keine Änderung -> nichts tun
         if (newName == currentName) return
 
-        // Notebook holen (Repo-API kann variieren -> wir machen es robust)
-        val existing = try {
-            notebookRepo.findById(notebookId)
-        } catch (_: Throwable) {
-            null
-        } ?: notebookRepo.findAll().firstOrNull { it.id == notebookId }
+        // Notebook holen
+        val existing = notebookRepo.findById(notebookId)
 
         if (existing == null) {
             DialogsExt.warn("Ordner nicht gefunden.")
             return
         }
 
-        // Save mit neuem Namen
-        notebookRepo.save(existing.copy(name = newName))
+        // Save mit neuem Namen und neuem updatedAt
+        notebookRepo.save(existing.copy(name = newName, updatedAt = Instant.now()))
         onAfterChange()
     }
 
     fun trashNotebookRecursively(notebookId: NotebookId) {
-        val idsToTrash = NotebookTreeUtils.collectSubtreeIds(notebookRepo, notebookId)
-        val now = Instant.now()
-
-        // notes -> trash
-        idsToTrash.forEach { nbId ->
-            noteRepo.listNoteSummariesInNotebook(nbId).forEach { n ->
-                service.moveToTrash(NoteId(n.id))
-            }
-        }
-
-        // folders -> trash
-        idsToTrash.forEach { nbId ->
-            notebookRepo.moveToTrash(nbId, now)
-        }
+        service.moveNotebookToTrash(notebookId)
 
         onSelectedNotebookChanged(null)
         onClearSelection()

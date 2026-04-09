@@ -14,21 +14,13 @@ import crossnote.desktop.presenter.TrashPresenter
 import crossnote.desktop.sync.HttpSyncClient
 import crossnote.desktop.sync.LanServerScanner
 import crossnote.desktop.sync.LocalSyncServer
-import crossnote.desktop.sync.NoteWire
-import crossnote.desktop.sync.NotebookWire
 import crossnote.desktop.sync.UdpDiscoveryClient
 import crossnote.desktop.sync.UdpDiscoveryServer
 import crossnote.desktop.ui.UiStateController
 import crossnote.desktop.util.Dialogs
 import crossnote.desktop.util.NotebookTreeUtils
 import crossnote.domain.note.NoteId
-import crossnote.infra.persistence.SqliteDatabase
-import crossnote.infra.persistence.SqliteNoteRepository
-import crossnote.infra.persistence.SqliteNotebookRepository
-import crossnote.infra.persistence.SqliteRevisionRepository
-import crossnote.infra.persistence.SqliteSettingsRepository
-import crossnote.infra.persistence.SystemClock
-import crossnote.infra.persistence.UuidIdGenerator
+import crossnote.infra.persistence.*
 import javafx.application.Platform
 import javafx.event.ActionEvent
 import javafx.fxml.FXML
@@ -57,7 +49,6 @@ import javafx.scene.layout.HBox
 import javafx.scene.layout.Priority
 import java.nio.file.Paths
 import javafx.scene.control.TextField as FxTextField
-import javafx.scene.control.SelectionMode
 import javafx.scene.input.KeyCode
 import javafx.scene.input.KeyEvent
 
@@ -79,6 +70,7 @@ class MainController {
 
     private val service = NoteAppService(
         repo = noteRepo,
+        notebookRepo = notebookRepo,
         revisionRepo = SqliteRevisionRepository(db),
         ids = UuidIdGenerator(),
         clock = SystemClock()
@@ -99,8 +91,7 @@ class MainController {
 
     private val localSyncServer: LocalSyncServer by lazy {
         LocalSyncServer(
-            notebookRepo = notebookRepo,
-            noteRepo = noteRepo,
+            noteAppService = service,
             onDataChanged = {
                 Platform.runLater {
                     if (::notebookTreePresenter.isInitialized) notebookTreePresenter.refresh()
@@ -887,61 +878,31 @@ class MainController {
         }
 
         try {
+            // 1. Pull Notebooks
             val nbBody = syncClient.pullNotebooks(cfg.host, cfg.port)
-            val remoteNbs = NotebookWire.decodeLines(nbBody)
+            val nbApplied = service.mergeNotebooksFromWire(nbBody)
 
-            var nbApplied = 0
-            for (remote in remoteNbs) {
-                val local = notebookRepo.findById(remote.id)
-                val shouldApply =
-                    local == null ||
-                            local.name != remote.name ||
-                            local.parentId != remote.parentId ||
-                            local.trashedAt != remote.trashedAt
-
-                if (shouldApply) {
-                    notebookRepo.save(remote)
-                    nbApplied++
-                }
-            }
-
-            val localNbs = notebookRepo.findAll()
-            val nbPushBody = NotebookWire.encodeLines(localNbs)
+            // 2. Push Notebooks
+            val nbPushBody = service.getAllNotebooksAsWire()
             val nbPushResult = syncClient.pushNotebooks(cfg.host, cfg.port, nbPushBody)
 
-            val pulledBody = syncClient.pullNotes(cfg.host, cfg.port, after = null)
-            val pulledNotes = NoteWire.decodeLines(pulledBody)
+            // 3. Pull Notes
+            val nBody = syncClient.pullNotes(cfg.host, cfg.port, after = null)
+            val nApplied = service.mergeNotesFromWire(nBody)
 
-            var pulledApplied = 0
-            for (remote in pulledNotes) {
-                val local = noteRepo.findById(remote.id)
-                val shouldApply =
-                    local == null ||
-                            remote.updatedAt.isAfter(local.updatedAt) ||
-                            (remote.updatedAt == local.updatedAt &&
-                                    (remote.title != local.title ||
-                                            remote.content != local.content ||
-                                            remote.trashedAt != local.trashedAt))
-
-                if (shouldApply) {
-                    noteRepo.save(remote)
-                    pulledApplied++
-                }
-            }
-
-            val localChanged = noteRepo.findAll()
-            val pushBody = NoteWire.encodeLines(localChanged)
-            val pushResult = syncClient.pushNotes(cfg.host, cfg.port, pushBody)
+            // 4. Push Notes
+            val nPushBody = service.getAllNotesAsWire()
+            val nPushResult = syncClient.pushNotes(cfg.host, cfg.port, nPushBody)
 
             notebookTreePresenter.refresh()
             trashPresenter.refresh()
 
             Dialogs.info(
                 "Synchronisation",
-                "Notebooks Pull: erhalten=${remoteNbs.size}, übernommen=$nbApplied\n" +
-                        "Notebooks Push: gesendet=${localNbs.size}, Server: $nbPushResult\n\n" +
-                        "Notes Pull: erhalten=${pulledNotes.size}, übernommen=$pulledApplied\n" +
-                        "Notes Push: gesendet=${localChanged.size}, Server: $pushResult"
+                "Notebooks Pull: übernommen=$nbApplied\n" +
+                        "Notebooks Push: Server: $nbPushResult\n\n" +
+                        "Notes Pull: übernommen=$nApplied\n" +
+                        "Notes Push: Server: $nPushResult"
             )
         } catch (t: Throwable) {
             Dialogs.error("Synchronisation", "Sync fehlgeschlagen: ${t.message}")

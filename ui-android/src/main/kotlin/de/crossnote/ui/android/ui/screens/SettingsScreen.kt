@@ -12,13 +12,41 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SettingsScreen(
     isSyncing: Boolean,
-    onSync: (String, Int) -> Unit
+    onSync: (String, Int) -> Unit,
+    isDarkMode: Boolean,
+    onDarkModeChange: (Boolean) -> Unit
 ) {
     var host by remember { mutableStateOf("10.0.2.2") } // Default for Android Emulator to host
     var port by remember { mutableStateOf("8085") }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("App Settings", style = MaterialTheme.typography.headlineSmall)
+        Spacer(Modifier.height(16.dp))
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Appearance", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Theme")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Light", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.width(8.dp))
+                        Switch(
+                            checked = isDarkMode,
+                            onCheckedChange = onDarkModeChange
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Dark", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.height(16.dp))
         
         Card(modifier = Modifier.fillMaxWidth()) {
