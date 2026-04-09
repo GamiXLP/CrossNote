@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
                 val revisions by viewModel.revisions.collectAsState()
                 val errorMessage by viewModel.errorMessage.collectAsState()
                 val expandedIds by viewModel.expandedNotebookIds.collectAsState()
+                val isSyncing by viewModel.isSyncing.collectAsState()
                 
                 val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
                 val snackbarHostState = remember { SnackbarHostState() }
@@ -322,7 +323,10 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                     currentScreen == Screen.Settings -> {
-                                        SettingsScreen()
+                                        SettingsScreen(
+                                            isSyncing = isSyncing,
+                                            onSync = { h, p -> viewModel.syncWithServer(h, p) }
+                                        )
                                     }
                                 }
                             }

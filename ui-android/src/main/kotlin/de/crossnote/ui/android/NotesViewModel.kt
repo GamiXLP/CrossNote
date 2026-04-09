@@ -1,6 +1,7 @@
 package de.crossnote.ui.android
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import crossnote.app.note.NoteAppService
 import crossnote.app.note.NoteSummaryDto
 import crossnote.app.note.NotebookTreeDto
@@ -9,9 +10,15 @@ import crossnote.domain.note.*
 import crossnote.domain.revision.RevisionId
 import crossnote.infra.persistence.*
 import de.crossnote.ui.android.data.Screen
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.time.Duration
 import java.time.Instant
 
 class NotesViewModel : ViewModel() {
@@ -57,6 +64,9 @@ class NotesViewModel : ViewModel() {
 
     private val _expandedNotebookIds = MutableStateFlow<Set<String>>(emptySet())
     val expandedNotebookIds: StateFlow<Set<String>> = _expandedNotebookIds.asStateFlow()
+
+    private val _isSyncing = MutableStateFlow(false)
+    val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
     init {
         refreshAll()
@@ -203,5 +213,63 @@ class NotesViewModel : ViewModel() {
         noteAppService.restoreFromRevision(NoteId(noteId), RevisionId(revisionId))
         selectNote(noteId)
         refreshAll()
+    }
+
+    // --- Sync Actions ---
+    fun syncWithServer(host: String, port: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSyncing.value = true
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(Duration.ofSeconds(5))
+                    .build()
+
+                // 1. Pull Notebooks
+                val nbPullReq = Request.Builder().url("http://$host:$port/notebooks").build()
+                client.newCall(nbPullReq).execute().use { response ->
+                    if (response.isSuccessful) {
+                        response.body?.string()?.let {
+                            noteAppService.mergeNotebooksFromWire(it, notebookRepo)
+                        }
+                    }
+                }
+
+                // 2. Pull Notes
+                val nPullReq = Request.Builder().url("http://$host:$port/notes").build()
+                client.newCall(nPullReq).execute().use { response ->
+                    if (response.isSuccessful) {
+                        response.body?.string()?.let {
+                            noteAppService.mergeNotesFromWire(it)
+                        }
+                    }
+                }
+
+                // 3. Push Notebooks
+                val nbPushBody = noteAppService.getAllNotebooksAsWire(notebookRepo)
+                val nbPushReq = Request.Builder()
+                    .url("http://$host:$port/notebooks/push")
+                    .post(nbPushBody.toRequestBody())
+                    .build()
+                client.newCall(nbPushReq).execute().close()
+
+                // 4. Push Notes
+                val nPushBody = noteAppService.getAllNotesAsWire()
+                val nPushReq = Request.Builder()
+                    .url("http://$host:$port/notes/push")
+                    .post(nPushBody.toRequestBody())
+                    .build()
+                client.newCall(nPushReq).execute().close()
+
+                launch(Dispatchers.Main) {
+                    refreshAll()
+                }
+            } catch (e: Exception) {
+                launch(Dispatchers.Main) {
+                    _errorMessage.value = "Sync failed: ${e.message}"
+                }
+            } finally {
+                _isSyncing.value = false
+            }
+        }
     }
 }

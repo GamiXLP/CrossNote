@@ -1,5 +1,7 @@
 package crossnote.app.note
 
+import crossnote.app.sync.NoteWire
+import crossnote.app.sync.NotebookWire
 import crossnote.domain.note.*
 import crossnote.domain.revision.*
 import java.time.Duration
@@ -373,4 +375,41 @@ class NoteAppService(
         
         notebookRepo.delete(id)
     }
+
+    // ---------- Sync Merging ----------
+
+    fun mergeNotesFromWire(body: String) {
+        val remoteNotes = NoteWire.decodeLines(body)
+        for (remote in remoteNotes) {
+            val local = repo.findById(remote.id)
+            if (local == null) {
+                repo.save(remote)
+            } else if (remote.updatedAt.isAfter(local.updatedAt)) {
+                repo.save(remote)
+            }
+        }
+    }
+
+    fun mergeNotebooksFromWire(body: String, notebookRepo: NotebookRepository) {
+        val remoteNotebooks = NotebookWire.decodeLines(body)
+        for (remote in remoteNotebooks) {
+            val local = notebookRepo.findById(remote.id)
+            if (local == null) {
+                notebookRepo.save(remote)
+            } else {
+                // Since Notebooks don't have updatedAt yet, we just overwrite if local was trashed but remote isn't, or vice versa?
+                // For simplicity, let's assume we always take remote if it's "newer" (but we don't have timestamp).
+                // Let's just save if it's different.
+                if (local != remote) {
+                    notebookRepo.save(remote)
+                }
+            }
+        }
+    }
+
+    fun getAllNotesAsWire(): String =
+        NoteWire.encodeLines(repo.findAll())
+
+    fun getAllNotebooksAsWire(notebookRepo: NotebookRepository): String =
+        NotebookWire.encodeLines(notebookRepo.findAll())
 }
