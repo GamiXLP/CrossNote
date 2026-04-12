@@ -14,12 +14,11 @@ class SqliteNotebookRepository(private val db: SqliteDatabase) : NotebookReposit
     override fun save(notebook: Notebook) {
         val sql =
             """
-            INSERT INTO notebooks(id, name, parent_id, updated_at, trashed_at)
-            VALUES(?, ?, ?, ?, ?)
+            INSERT INTO notebooks(id, name, parent_id, trashed_at)
+            VALUES(?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 parent_id = excluded.parent_id,
-                updated_at = excluded.updated_at,
                 trashed_at = excluded.trashed_at;
             """.trimIndent()
 
@@ -30,17 +29,15 @@ class SqliteNotebookRepository(private val db: SqliteDatabase) : NotebookReposit
             val parent = notebook.parentId
             if (parent != null) ps.setString(3, parent.value) else ps.setNull(3, Types.VARCHAR)
 
-            ps.setString(4, notebook.updatedAt.toString())
-
             val trashed = notebook.trashedAt
-            if (trashed != null) ps.setString(5, trashed.toString()) else ps.setNull(5, Types.VARCHAR)
+            if (trashed != null) ps.setString(4, trashed.toString()) else ps.setNull(4, Types.VARCHAR)
 
             ps.executeUpdate()
         }
     }
 
     override fun findById(id: NotebookId): Notebook? {
-        val sql = "SELECT id, name, parent_id, updated_at, trashed_at FROM notebooks WHERE id = ?;"
+        val sql = "SELECT id, name, parent_id, trashed_at FROM notebooks WHERE id = ?;"
         conn().prepareStatement(sql).use { ps ->
             ps.setString(1, id.value)
             ps.executeQuery().use { rs ->
@@ -56,7 +53,7 @@ class SqliteNotebookRepository(private val db: SqliteDatabase) : NotebookReposit
     override fun findAll(): List<Notebook> {
         val sql =
             """
-            SELECT id, name, parent_id, updated_at, trashed_at
+            SELECT id, name, parent_id, trashed_at
             FROM notebooks
             WHERE trashed_at IS NULL
             ORDER BY name ASC;
@@ -74,10 +71,10 @@ class SqliteNotebookRepository(private val db: SqliteDatabase) : NotebookReposit
     /**
      * ✅ Alle Ordner (inkl. Papierkorb) – benötigt für rekursives Trashen
      */
-    override fun findAllIncludingTrashed(): List<Notebook> {
+    fun findAllIncludingTrashed(): List<Notebook> {
         val sql =
             """
-            SELECT id, name, parent_id, updated_at, trashed_at
+            SELECT id, name, parent_id, trashed_at
             FROM notebooks
             ORDER BY name ASC;
             """.trimIndent()
@@ -95,20 +92,18 @@ class SqliteNotebookRepository(private val db: SqliteDatabase) : NotebookReposit
      * ✅ Verschiebt Ordner in Papierkorb (setzt trashed_at)
      */
     fun moveToTrash(id: NotebookId, now: Instant) {
-        val sql = "UPDATE notebooks SET trashed_at = ?, updated_at = ? WHERE id = ?;"
+        val sql = "UPDATE notebooks SET trashed_at = ? WHERE id = ?;"
         conn().prepareStatement(sql).use { ps ->
             ps.setString(1, now.toString())
-            ps.setString(2, now.toString())
-            ps.setString(3, id.value)
+            ps.setString(2, id.value)
             ps.executeUpdate()
         }
     }
 
-    fun restoreFromTrash(id: NotebookId, now: Instant) {
-        val sql = "UPDATE notebooks SET trashed_at = NULL, updated_at = ? WHERE id = ?;"
+    fun restoreFromTrash(id: NotebookId) {
+        val sql = "UPDATE notebooks SET trashed_at = NULL WHERE id = ?;"
         conn().prepareStatement(sql).use { ps ->
-            ps.setString(1, now.toString())
-            ps.setString(2, id.value)
+            ps.setString(1, id.value)
             ps.executeUpdate()
         }
     }
@@ -138,17 +133,18 @@ class SqliteNotebookRepository(private val db: SqliteDatabase) : NotebookReposit
     /**
      * ✅ Drag & Drop: Ordner verschieben
      */
-    fun moveNotebook(id: NotebookId, newParent: NotebookId?, now: Instant) {
-        val sql = "UPDATE notebooks SET parent_id = ?, updated_at = ? WHERE id = ?;"
+    fun moveNotebook(id: NotebookId, newParent: NotebookId?) {
+        val sql = "UPDATE notebooks SET parent_id = ? WHERE id = ?;"
         conn().prepareStatement(sql).use { ps ->
             if (newParent != null) ps.setString(1, newParent.value) else ps.setNull(1, Types.VARCHAR)
-            ps.setString(2, now.toString())
-            ps.setString(3, id.value)
+            ps.setString(2, id.value)
             ps.executeUpdate()
         }
     }
 
     override fun delete(id: NotebookId) {
+        // ⚠️ Wird bei euch jetzt eigentlich nicht mehr genutzt (weil Papierkorb),
+        // aber wir lassen es drin für "hard delete" falls ihr es irgendwann braucht.
         val sql = "DELETE FROM notebooks WHERE id = ?;"
         conn().prepareStatement(sql).use { ps ->
             ps.setString(1, id.value)
@@ -158,21 +154,19 @@ class SqliteNotebookRepository(private val db: SqliteDatabase) : NotebookReposit
 
     private fun mapNotebook(rs: java.sql.ResultSet): Notebook {
         val parentStr = rs.getString("parent_id")
-        val updatedAtStr = rs.getString("updated_at")
         val trashedStr = rs.getString("trashed_at")
 
         return Notebook(
             id = NotebookId(rs.getString("id")),
             name = rs.getString("name"),
             parentId = parentStr?.let { NotebookId(it) },
-            updatedAt = if (updatedAtStr.isNullOrBlank()) Instant.EPOCH else Instant.parse(updatedAtStr),
             trashedAt = trashedStr?.let { Instant.parse(it) }
         )
     }
 
     fun findAllTrashed(): List<Notebook> {
         val sql = """
-            SELECT id, name, parent_id, updated_at, trashed_at
+            SELECT id, name, parent_id, trashed_at
             FROM notebooks
             WHERE trashed_at IS NOT NULL;
         """.trimIndent()
@@ -181,7 +175,14 @@ class SqliteNotebookRepository(private val db: SqliteDatabase) : NotebookReposit
             ps.executeQuery().use { rs ->
                 val result = mutableListOf<Notebook>()
                 while (rs.next()) {
-                    result.add(mapNotebook(rs))
+                    result.add(
+                        Notebook(
+                            id = NotebookId(rs.getString("id")),
+                            name = rs.getString("name"),
+                            parentId = rs.getString("parent_id")?.let { NotebookId(it) },
+                            trashedAt = rs.getString("trashed_at")?.let { Instant.parse(it) }
+                        )
+                    )
                 }
                 return result
             }
