@@ -51,6 +51,7 @@ fun MainScreen(viewModel: NotesViewModel) {
     val revisions by viewModel.revisions.collectAsState()
     val previewRevision by viewModel.previewRevision.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val infoMessage by viewModel.infoMessage.collectAsState()
     val expandedIds by viewModel.expandedNotebookIds.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
     val isDarkMode by viewModel.isDarkMode.collectAsState()
@@ -315,6 +316,19 @@ fun MainScreen(viewModel: NotesViewModel) {
             text = { Text(msg) },
             confirmButton = {
                 TextButton(onClick = { viewModel.clearError() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    infoMessage?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearInfo() },
+            title = { Text("Synchronisation") },
+            text = { Text(msg) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearInfo() }) {
                     Text("OK")
                 }
             }

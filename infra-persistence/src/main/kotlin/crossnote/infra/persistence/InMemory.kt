@@ -30,7 +30,9 @@ class InMemoryNotebookRepository : NotebookRepository {
 
     override fun findById(id: NotebookId): Notebook? = data[id.value]
 
-    override fun findAll(): List<Notebook> = data.values.toList()
+    override fun findAll(): List<Notebook> = data.values.filter { it.trashedAt == null }
+
+    override fun findAllIncludingTrashed(): List<Notebook> = data.values.toList()
 
     override fun delete(id: NotebookId) {
         data.remove(id.value)

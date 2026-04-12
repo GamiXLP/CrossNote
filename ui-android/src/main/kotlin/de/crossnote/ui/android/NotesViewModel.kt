@@ -91,6 +91,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    private val _infoMessage = MutableStateFlow<String?>(null)
+    val infoMessage: StateFlow<String?> = _infoMessage.asStateFlow()
+
     private val _expandedNotebookIds = MutableStateFlow<Set<String>>(emptySet())
     val expandedNotebookIds: StateFlow<Set<String>> = _expandedNotebookIds.asStateFlow()
 
@@ -119,15 +122,21 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         _notebookTree.value = noteAppService.listNotebookTree()
         _trashedNotebookTree.value = noteAppService.listTrashedNotebookTree()
         
-        _currentNote.value?.let { 
-            if (it.id.value != "temp-new") {
-                _revisions.value = noteAppService.listRevisions(it.id)
+        _currentNote.value?.let { current ->
+            if (current.id.value != "temp-new") {
+                // Fetch updated version from DB (e.g. after sync)
+                _currentNote.value = noteAppService.getNote(current.id)
+                _revisions.value = noteAppService.listRevisions(current.id)
             }
         }
     }
     
     fun clearError() {
         _errorMessage.value = null
+    }
+
+    fun clearInfo() {
+        _infoMessage.value = null
     }
 
     fun setDarkMode(enabled: Boolean) {
@@ -228,9 +237,6 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun renameNotebook(id: String, newName: String) {
-        // We use domain logic directly here or via service. Let's use service if possible.
-        // Actually NoteAppService doesn't have renameNotebook, let's add it or keep repo usage.
-        // For consistency let's just use the notebookRepo since it's already here.
         val notebook = notebookRepo.findById(NotebookId(id)) ?: return
         notebookRepo.save(notebook.copy(name = newName, updatedAt = Instant.now()))
         refreshAll()
@@ -293,13 +299,20 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     .connectTimeout(Duration.ofSeconds(5))
                     .build()
 
+                var nbApplied = 0
+                var nApplied = 0
+                var nbPushResult = ""
+                var nPushResult = ""
+
                 // 1. Pull Notebooks
                 val nbPullReq = Request.Builder().url("http://$host:$port/notebooks").build()
                 client.newCall(nbPullReq).execute().use { response ->
                     if (response.isSuccessful) {
                         response.body?.string()?.let {
-                            noteAppService.mergeNotebooksFromWire(it)
+                            nbApplied = noteAppService.mergeNotebooksFromWire(it)
                         }
+                    } else {
+                         throw Exception("Pull Notebooks failed: ${response.code}")
                     }
                 }
 
@@ -308,8 +321,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 client.newCall(nPullReq).execute().use { response ->
                     if (response.isSuccessful) {
                         response.body?.string()?.let {
-                            noteAppService.mergeNotesFromWire(it)
+                            nApplied = noteAppService.mergeNotesFromWire(it)
                         }
+                    } else {
+                         throw Exception("Pull Notes failed: ${response.code}")
                     }
                 }
 
@@ -319,7 +334,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     .url("http://$host:$port/notebooks/push")
                     .post(nbPushBody.toRequestBody())
                     .build()
-                client.newCall(nbPushReq).execute().close()
+                client.newCall(nbPushReq).execute().use { response ->
+                    nbPushResult = if (response.isSuccessful) response.body?.string() ?: "ok" else "Error: ${response.code}"
+                }
 
                 // 4. Push Notes
                 val nPushBody = noteAppService.getAllNotesAsWire()
@@ -327,10 +344,17 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     .url("http://$host:$port/notes/push")
                     .post(nPushBody.toRequestBody())
                     .build()
-                client.newCall(nPushReq).execute().close()
+                client.newCall(nPushReq).execute().use { response ->
+                    nPushResult = if (response.isSuccessful) response.body?.string() ?: "ok" else "Error: ${response.code}"
+                }
 
                 launch(Dispatchers.Main) {
                     refreshAll()
+                    _infoMessage.value = "Synchronisation erfolgreich\n\n" +
+                            "Notebooks Pull: übernommen=$nbApplied\n" +
+                            "Notebooks Push: Server: $nbPushResult\n\n" +
+                            "Notes Pull: übernommen=$nApplied\n" +
+                            "Notes Push: Server: $nPushResult"
                 }
             } catch (e: Exception) {
                 launch(Dispatchers.Main) {
