@@ -8,5 +8,6 @@ data class Notebook(
     val id: NotebookId,
     val name: String,
     val parentId: NotebookId? = null,
+    val updatedAt: Instant = Instant.now(),
     val trashedAt: Instant? = null
 )

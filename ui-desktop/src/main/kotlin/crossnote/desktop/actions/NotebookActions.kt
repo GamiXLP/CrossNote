@@ -51,15 +51,12 @@ class NotebookActions(
 
         val raw = result.get()
 
-        val name = try {
-            validateNotebookName(raw)
+        try {
+            service.createNotebook(raw, parent)
         } catch (e: ValidationException) {
             DialogsExt.warn(e.message ?: i18n.t("common.invalidFolderName"))
             return
         }
-
-        val id = NotebookId(UUID.randomUUID().toString())
-        notebookRepo.save(Notebook(id, name, parentId = parent))
 
         onAfterChange()
     }
