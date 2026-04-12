@@ -154,7 +154,7 @@ Projekt bauen:
 Tests ausführen:
 
 ```bash
-./gradlew test
+./gradlew clean Test jacocoTestReport
 ```
 
 ---

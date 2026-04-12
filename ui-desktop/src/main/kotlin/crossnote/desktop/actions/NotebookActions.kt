@@ -1,6 +1,7 @@
 package crossnote.desktop.actions
 
 import crossnote.app.note.NoteAppService
+import crossnote.desktop.I18n
 import crossnote.desktop.ThemeManager
 import crossnote.desktop.util.DialogsExt
 import crossnote.desktop.util.NotebookTreeUtils
@@ -27,6 +28,7 @@ import java.time.Instant
 import java.util.UUID
 
 class NotebookActions(
+    private val i18n: I18n,
     private val service: NoteAppService,
     private val notebookRepo: SqliteNotebookRepository,
     private val noteRepo: SqliteNoteRepository,
@@ -38,10 +40,9 @@ class NotebookActions(
 ) {
 
     fun createNotebookDialog(parent: NotebookId?) {
-
         val dialog = buildNotebookNameDialog(
-            windowTitle = "Neuer Ordner",
-            headerTitle = if (parent == null) "Ordner anlegen" else "Unterordner anlegen",
+            windowTitle = if (parent == null) i18n.t("dialog.folder.create.title") else i18n.t("dialog.subfolder.create.title"),
+            headerTitle = if (parent == null) i18n.t("dialog.folder.create.header") else i18n.t("dialog.subfolder.create.header"),
             initialText = ""
         )
 
@@ -53,21 +54,17 @@ class NotebookActions(
         try {
             service.createNotebook(raw, parent)
         } catch (e: ValidationException) {
-            DialogsExt.warn(e.message ?: "Ungültiger Ordnername")
+            DialogsExt.warn(e.message ?: i18n.t("common.invalidFolderName"))
             return
         }
 
         onAfterChange()
     }
 
-    /**
-     * ✅ NEU: Ordner umbenennen über Dialog
-     */
     fun renameNotebookDialog(notebookId: NotebookId, currentName: String) {
-
         val dialog = buildNotebookNameDialog(
-            windowTitle = "Ordner umbenennen",
-            headerTitle = "Ordner umbenennen",
+            windowTitle = i18n.t("dialog.folder.rename.title"),
+            headerTitle = i18n.t("dialog.folder.rename.header"),
             initialText = currentName
         )
 
@@ -79,28 +76,40 @@ class NotebookActions(
         val newName = try {
             validateNotebookName(raw)
         } catch (e: ValidationException) {
-            DialogsExt.warn(e.message ?: "Ungültiger Ordnername")
+            DialogsExt.warn(e.message ?: i18n.t("common.invalidFolderName"))
             return
         }
 
-        // Keine Änderung -> nichts tun
         if (newName == currentName) return
 
-        // Notebook holen
-        val existing = notebookRepo.findById(notebookId)
+        val existing = try {
+            notebookRepo.findById(notebookId)
+        } catch (_: Throwable) {
+            null
+        } ?: notebookRepo.findAll().firstOrNull { it.id == notebookId }
 
         if (existing == null) {
-            DialogsExt.warn("Ordner nicht gefunden.")
+            DialogsExt.warn(i18n.t("common.folderNotFound"))
             return
         }
 
-        // Save mit neuem Namen und neuem updatedAt
-        notebookRepo.save(existing.copy(name = newName, updatedAt = Instant.now()))
+        notebookRepo.save(existing.copy(name = newName))
         onAfterChange()
     }
 
     fun trashNotebookRecursively(notebookId: NotebookId) {
-        service.moveNotebookToTrash(notebookId)
+        val idsToTrash = NotebookTreeUtils.collectSubtreeIds(notebookRepo, notebookId)
+        val now = Instant.now()
+
+        idsToTrash.forEach { nbId ->
+            noteRepo.listNoteSummariesInNotebook(nbId).forEach { n ->
+                service.moveToTrash(NoteId(n.id))
+            }
+        }
+
+        idsToTrash.forEach { nbId ->
+            notebookRepo.moveToTrash(nbId, now)
+        }
 
         onSelectedNotebookChanged(null)
         onClearSelection()
@@ -121,13 +130,11 @@ class NotebookActions(
         val dialog = TextInputDialog(initialText).apply {
             title = windowTitle
             headerText = null
-            contentText = "Name:"
+            contentText = i18n.t("dialog.common.nameLabel")
         }
 
-        // ✅ wichtig: Darkmode/Theme auf Dialog anwenden
         themeManager.register(dialog)
 
-        // ✅ JavaFX-Standard-"?" entfernen
         dialog.graphic = null
         dialog.dialogPane.graphic = null
 
@@ -136,7 +143,6 @@ class NotebookActions(
         )
         dialog.dialogPane.styleClass.add("cn-dialog")
 
-        // ✅ Custom Header im CrossNote-Style
         val icon = ImageView(
             Image(NotebookActions::class.java.getResourceAsStream("/images/CrossNote_Icon.png"))
         ).apply {
@@ -159,13 +165,11 @@ class NotebookActions(
 
         dialog.dialogPane.header = header
 
-        // --- Zeichenlimit ---
         dialog.editor.textFormatter = TextFormatter<String> { change: TextFormatter.Change ->
             val newText = change.controlNewText
             if (newText.length <= TextConstraints.NOTEBOOK_NAME_MAX) change else null
         }
 
-        // --- Counter-Label ---
         val counterLabel = Label().apply {
             opacity = 0.7
             styleClass.add("cn-dialog-counter")
@@ -175,24 +179,18 @@ class NotebookActions(
             val len = (text ?: "").length
             val remaining = TextConstraints.NOTEBOOK_NAME_MAX - len
             counterLabel.text =
-                if (remaining <= 0) "Limit erreicht"
-                else "Noch $remaining Zeichen"
+                if (remaining <= 0) i18n.t("common.limitReached")
+                else i18n.t("common.remainingChars", remaining)
         }
 
         updateCounter(dialog.editor.text)
+        dialog.editor.textProperty().addListener { _, _, newValue -> updateCounter(newValue) }
 
-        dialog.editor.textProperty().addListener { _, _, newValue ->
-            updateCounter(newValue)
-        }
-
-        // --- Layout (clean & app-like) ---
-        val nameLabel = Label("Name:").apply {
+        val nameLabel = Label(i18n.t("dialog.common.nameLabel")).apply {
             styleClass.add("cn-dialog-field-label")
         }
 
-        val nameField = dialog.editor.apply {
-            prefWidth = 320.0
-        }
+        val nameField = dialog.editor.apply { prefWidth = 320.0 }
 
         val row = HBox(10.0, nameLabel, nameField).apply {
             alignment = Pos.CENTER_LEFT
@@ -221,8 +219,6 @@ class NotebookActions(
         dialog.setOnShown {
             val stage = dialog.dialogPane.scene.window as? javafx.stage.Stage
             stage?.scene?.fill = javafx.scene.paint.Color.TRANSPARENT
-
-            // Cursor direkt in Feld + alles markieren (nice UX beim Umbenennen)
             dialog.editor.requestFocus()
             dialog.editor.selectAll()
         }
