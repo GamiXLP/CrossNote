@@ -21,24 +21,6 @@ class InMemoryNoteRepository : NoteRepository {
     }
 }
 
-class InMemoryNotebookRepository : NotebookRepository {
-    private val data = ConcurrentHashMap<String, Notebook>()
-
-    override fun save(notebook: Notebook) {
-        data[notebook.id.value] = notebook
-    }
-
-    override fun findById(id: NotebookId): Notebook? = data[id.value]
-
-    override fun findAll(): List<Notebook> = data.values.filter { it.trashedAt == null }
-
-    override fun findAllIncludingTrashed(): List<Notebook> = data.values.toList()
-
-    override fun delete(id: NotebookId) {
-        data.remove(id.value)
-    }
-}
-
 class UuidIdGenerator : IdGenerator {
     override fun newId(): NoteId = NoteId(UUID.randomUUID().toString())
 }
