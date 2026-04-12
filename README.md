@@ -129,16 +129,38 @@ Abhängig von `core-application`.
 
 # Projekt starten
 
-## Windows (PowerShell)
+## UI-Desktop
+
+### Windows (PowerShell)
 
 ```powershell
 .\gradlew :ui-desktop:run --no-configuration-cache
 ```
 
-## Linux
+### Linux
 
 ```bash
 ./gradlew :ui-desktop:run --no-configuration-cache
+```
+
+## UI-Android / Android Studio
+
+### Vorbereitung
+1. Öffnen Sie **Android Studio**.
+2. Wählen Sie **Open** und navigieren Sie zum Projektverzeichnis, um das Projekt zu importieren.
+3. Warten Sie, bis der **Gradle Sync** abgeschlossen ist.
+
+### App starten
+1. **Gerät wählen:** Wählen Sie in der oberen Toolbar im Dropdown-Menü ein verbundenes physisches Gerät oder einen Emulator (AVD) aus.
+2. **Ausführen:** Klicken Sie auf das grüne **Run-Icon** (Play-Symbol) oder nutzen Sie den Shortcut:
+  - **Windows/Linux:** `Shift` + `F10`
+  - **macOS:** `Control` + `R`
+
+### Kommandozeile 
+Falls Sie die App direkt über das Terminal auf einem verbundenen Gerät installieren möchten:
+
+```bash
+./gradlew :ui-android:installDebug
 ```
 
 ---
@@ -197,6 +219,10 @@ Berücksichtigt wurden:
 - Parallele Dokumentation
 - Definition funktionaler und nicht-funktionaler Anforderungen
 - Architekturentscheidungen mit Begründung
+
+Das Ergebnis besteht aus zwei Zweigen im Repository, da diese wegen zu extremen Merge-Konflikten nicht kombiniert werden konnten.
+- Desktop Umgebung (main branch)
+- Android App (82-android-ui-implementation branch)
 
 ---
 
