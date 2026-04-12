@@ -98,7 +98,7 @@ Enthält:
 
 Abhängig von `core-domain`.
 
-### ui-desktop
+### ui-desktop / ui-android
 Enthält:
 - JavaFX-Benutzeroberfläche
 - Controller
